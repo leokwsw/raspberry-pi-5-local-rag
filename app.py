@@ -1,5 +1,6 @@
 import argparse
 import textwrap
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -142,12 +143,11 @@ class LocalRAG:
             )
         return sources
 
-    def answer(self, question: str) -> tuple[str, list[RetrievedSource]]:
-        sources = self.retrieve(question)
+    def build_prompt(self, question: str, sources: list[RetrievedSource]) -> str:
         context = "\n\n".join(
             f"[{index}] {source.title}\n{source.text}" for index, source in enumerate(sources, start=1)
         )
-        prompt = textwrap.dedent(
+        return textwrap.dedent(
             f"""
             你是一個在 Raspberry Pi 5 16GB 本機執行的 RAG AI 助手。
             請只根據下方 context 回答問題；如果 context 不足，請明確說「目前資料不足」。
@@ -163,8 +163,28 @@ class LocalRAG:
             """
         ).strip()
 
+    def answer(self, question: str) -> tuple[str, list[RetrievedSource]]:
+        sources = self.retrieve(question)
+        prompt = self.build_prompt(question, sources)
         response = self.ollama.generate(model=self.generation_model, prompt=prompt)
         return response["response"].strip(), sources
+
+    def stream_answer(self, question: str) -> tuple[Iterator[str], list[RetrievedSource]]:
+        sources = self.retrieve(question)
+        prompt = self.build_prompt(question, sources)
+        response_stream = self.ollama.generate(
+            model=self.generation_model,
+            prompt=prompt,
+            stream=True,
+        )
+
+        def chunks() -> Iterator[str]:
+            for chunk in response_stream:
+                text = chunk.get("response", "")
+                if text:
+                    yield text
+
+        return chunks(), sources
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -179,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-k", type=int, default=3, help="Number of retrieved context chunks.")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild the ChromaDB collection.")
     parser.add_argument("--show-sources", action="store_true", help="Print retrieved source snippets.")
+    parser.add_argument("--stream", action="store_true", help="Stream generated tokens to stdout.")
     return parser
 
 
@@ -189,15 +210,22 @@ def print_sources(sources: list[RetrievedSource]) -> None:
         print(f"- {source.title}{distance}: {source.text}")
 
 
-def ask_and_print(rag: LocalRAG, question: str, show_sources: bool) -> None:
+def ask_and_print(rag: LocalRAG, question: str, show_sources: bool, stream: bool) -> None:
     print(f"\nQuestion: {question}")
-    answer, sources = rag.answer(question)
-    print(f"\nAnswer:\n{answer}")
+    if stream:
+        answer_stream, sources = rag.stream_answer(question)
+        print("\nAnswer:")
+        for chunk in answer_stream:
+            print(chunk, end="", flush=True)
+        print()
+    else:
+        answer, sources = rag.answer(question)
+        print(f"\nAnswer:\n{answer}")
     if show_sources:
         print_sources(sources)
 
 
-def interactive_loop(rag: LocalRAG, show_sources: bool) -> None:
+def interactive_loop(rag: LocalRAG, show_sources: bool, stream: bool) -> None:
     print("Local RAG is ready. Type a question, or type 'exit' to quit.")
     while True:
         question = input("\nYou> ").strip()
@@ -206,7 +234,7 @@ def interactive_loop(rag: LocalRAG, show_sources: bool) -> None:
             return
         if not question:
             continue
-        ask_and_print(rag, question, show_sources)
+        ask_and_print(rag, question, show_sources, stream)
 
 
 def main() -> int:
@@ -224,9 +252,9 @@ def main() -> int:
     try:
         rag.prepare(rebuild=args.rebuild)
         if args.question:
-            ask_and_print(rag, args.question, args.show_sources)
+            ask_and_print(rag, args.question, args.show_sources, args.stream)
         else:
-            interactive_loop(rag, args.show_sources)
+            interactive_loop(rag, args.show_sources, args.stream)
     except KeyboardInterrupt:
         print("\nInterrupted.")
         return 130
