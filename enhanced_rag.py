@@ -1,6 +1,11 @@
 """
-Enhanced RAG engine with Graph DB and Feedback RAG support.
+Enhanced RAG engine with Graph DB, Feedback RAG, and Reranking support.
 Designed for Raspberry Pi 5 16GB.
+
+Models required on Ollama:
+- LLM: llama3.2:3b (generation)
+- Embedding: nomic-embed-text (vector embedding)
+- Reranking: bge-reranker-base or LLM-based (optional, for better retrieval)
 """
 
 import re
@@ -26,6 +31,7 @@ DEFAULT_DB_PATH = "./chroma_db"
 DEFAULT_COLLECTION = "pi_local_rag"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
 DEFAULT_GENERATION_MODEL = "llama3.2:3b"
+DEFAULT_RERANK_MODEL = "bge-reranker-base"
 
 
 KNOWLEDGE_BASE = [
@@ -76,6 +82,110 @@ class RetrievedSource:
     feedback_score: float = 0.0
     adjusted_score: float = 0.0
     graph_boost: float = 0.0
+    rerank_score: Optional[float] = None
+
+
+class Reranker:
+    """Reranker for improving retrieval quality."""
+
+    def __init__(self, ollama_client, model: str = DEFAULT_RERANK_MODEL, use_llm_fallback: bool = True):
+        self.ollama = ollama_client
+        self.model = model
+        self.use_llm_fallback = use_llm_fallback
+        self._model_available: Optional[bool] = None
+
+    def _check_model_available(self) -> bool:
+        """Check if the reranker model is available in Ollama."""
+        if self._model_available is not None:
+            return self._model_available
+
+        try:
+            models = self.ollama.list()
+            model_names = [m.get("name", "").split(":")[0] for m in models.get("models", [])]
+            self._model_available = self.model.split(":")[0] in model_names
+        except Exception:
+            self._model_available = False
+
+        return self._model_available
+
+    def rerank(
+        self,
+        query: str,
+        documents: list[tuple[str, str]],
+        top_k: int = 3,
+        fallback_model: Optional[str] = None,
+    ) -> list[tuple[int, float]]:
+        """
+        Rerank documents based on relevance to query.
+        Returns list of (original_index, score) sorted by score descending.
+        """
+        if not documents:
+            return []
+
+        if self._check_model_available():
+            return self._rerank_with_model(query, documents, top_k)
+        elif self.use_llm_fallback and fallback_model:
+            return self._rerank_with_llm(query, documents, top_k, fallback_model)
+        else:
+            return [(i, 1.0 / (i + 1)) for i in range(min(top_k, len(documents)))]
+
+    def _rerank_with_model(
+        self,
+        query: str,
+        documents: list[tuple[str, str]],
+        top_k: int,
+    ) -> list[tuple[int, float]]:
+        """Rerank using dedicated reranker model."""
+        scores = []
+        for i, (doc_id, doc_text) in enumerate(documents):
+            try:
+                prompt = f"Query: {query}\n\nDocument: {doc_text[:500]}"
+                response = self.ollama.embeddings(model=self.model, prompt=prompt)
+                embedding = response.get("embedding", [])
+                score = sum(embedding[:10]) / 10 if embedding else 0.0
+                scores.append((i, score))
+            except Exception:
+                scores.append((i, 0.0))
+
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return scores[:top_k]
+
+    def _rerank_with_llm(
+        self,
+        query: str,
+        documents: list[tuple[str, str]],
+        top_k: int,
+        llm_model: str,
+    ) -> list[tuple[int, float]]:
+        """Rerank using LLM scoring (slower but more accurate)."""
+        scores = []
+
+        for i, (doc_id, doc_text) in enumerate(documents):
+            prompt = f"""Rate the relevance of this document to the query on a scale of 0-10.
+Only respond with a single number.
+
+Query: {query}
+
+Document: {doc_text[:400]}
+
+Relevance score (0-10):"""
+
+            try:
+                response = self.ollama.generate(
+                    model=llm_model,
+                    prompt=prompt,
+                    options={"num_predict": 5, "temperature": 0},
+                )
+                score_text = response.get("response", "0").strip()
+                score_match = re.search(r"(\d+(?:\.\d+)?)", score_text)
+                score = float(score_match.group(1)) if score_match else 0.0
+                score = min(10.0, max(0.0, score))
+                scores.append((i, score))
+            except Exception:
+                scores.append((i, 0.0))
+
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return scores[:top_k]
 
 
 @dataclass
@@ -86,7 +196,14 @@ class GraphContext:
 
 
 class EnhancedRAG:
-    """Enhanced RAG with Graph DB and Feedback support."""
+    """
+    Enhanced RAG with Graph DB, Feedback, and Reranking support.
+    
+    Runs three models on Ollama:
+    - LLM (generation_model): For generating answers
+    - Embedding (embed_model): For vector embeddings
+    - Reranking (rerank_model): For reordering retrieved documents
+    """
 
     def __init__(
         self,
@@ -94,22 +211,28 @@ class EnhancedRAG:
         collection_name: str = DEFAULT_COLLECTION,
         embed_model: str = DEFAULT_EMBED_MODEL,
         generation_model: str = DEFAULT_GENERATION_MODEL,
+        rerank_model: str = DEFAULT_RERANK_MODEL,
         top_k: int = 3,
         storage_path: str = DEFAULT_STORAGE_PATH,
         use_feedback: bool = True,
         use_graph: bool = True,
+        use_reranking: bool = True,
         feedback_weight: float = 0.1,
         graph_weight: float = 0.05,
+        rerank_weight: float = 0.2,
     ) -> None:
         self.db_path = db_path
         self.collection_name = collection_name
         self.embed_model = embed_model
         self.generation_model = generation_model
+        self.rerank_model = rerank_model
         self.top_k = max(1, top_k)
         self.use_feedback = use_feedback
         self.use_graph = use_graph
+        self.use_reranking = use_reranking
         self.feedback_weight = feedback_weight
         self.graph_weight = graph_weight
+        self.rerank_weight = rerank_weight
 
         try:
             import chromadb
@@ -124,6 +247,12 @@ class EnhancedRAG:
         self.storage = StorageManager(storage_path)
         self.media_processor = MediaProcessor()
         self.chunker = TextChunker(chunk_size=500, chunk_overlap=50)
+
+        self.reranker = Reranker(
+            ollama_client=ollama,
+            model=rerank_model,
+            use_llm_fallback=True,
+        )
 
     def prepare(self, rebuild: bool = False) -> None:
         """Initialize or rebuild the knowledge base."""
@@ -256,16 +385,16 @@ class EnhancedRAG:
         return True
 
     def retrieve(self, question: str) -> list[RetrievedSource]:
-        """Retrieve relevant sources with feedback and graph adjustments."""
+        """Retrieve relevant sources with reranking, feedback, and graph adjustments."""
         if self.collection.count() == 0:
             raise RuntimeError("ChromaDB collection is empty. Run with --rebuild to recreate the index.")
 
         query_embedding = self.embed(question)
-        n_results = min(self.top_k * 2, self.collection.count())
+        n_candidates = min(self.top_k * 3, self.collection.count())
 
         result = self.collection.query(
             query_embeddings=[query_embedding],
-            n_results=n_results,
+            n_results=n_candidates,
         )
 
         documents = result.get("documents", [[]])[0]
@@ -281,6 +410,19 @@ class EnhancedRAG:
         if self.use_graph:
             graph_boosts = self._get_graph_boosts(question)
 
+        rerank_scores = {}
+        if self.use_reranking and len(documents) > self.top_k:
+            doc_pairs = [(ids[i], documents[i]) for i in range(len(documents))]
+            rerank_results = self.reranker.rerank(
+                query=question,
+                documents=doc_pairs,
+                top_k=self.top_k * 2,
+                fallback_model=self.generation_model,
+            )
+            for orig_idx, score in rerank_results:
+                if orig_idx < len(ids):
+                    rerank_scores[ids[orig_idx]] = score / 10.0
+
         sources: list[RetrievedSource] = []
         for i, doc_text in enumerate(documents):
             doc_id = ids[i] if i < len(ids) else f"unknown_{i}"
@@ -289,13 +431,13 @@ class EnhancedRAG:
 
             feedback_score = feedback_scores.get(doc_id, 0.0)
             graph_boost = graph_boosts.get(doc_id, 0.0)
+            rerank_score = rerank_scores.get(doc_id)
 
             base_score = 1.0 / (1.0 + distance) if distance is not None else 0.5
-            adjusted_score = (
-                base_score
-                + self.feedback_weight * feedback_score
-                + self.graph_weight * graph_boost
-            )
+            adjusted_score = base_score + self.feedback_weight * feedback_score + self.graph_weight * graph_boost
+
+            if rerank_score is not None:
+                adjusted_score += self.rerank_weight * rerank_score
 
             sources.append(
                 RetrievedSource(
@@ -306,6 +448,7 @@ class EnhancedRAG:
                     feedback_score=feedback_score,
                     adjusted_score=adjusted_score,
                     graph_boost=graph_boost,
+                    rerank_score=rerank_score,
                 )
             )
 
@@ -515,12 +658,36 @@ class EnhancedRAG:
             },
             "storage": storage_stats,
             "models": {
+                "llm_model": self.generation_model,
                 "embed_model": self.embed_model,
-                "generation_model": self.generation_model,
+                "rerank_model": self.rerank_model,
             },
             "settings": {
                 "top_k": self.top_k,
                 "use_feedback": self.use_feedback,
                 "use_graph": self.use_graph,
+                "use_reranking": self.use_reranking,
             },
         }
+
+    def check_models(self) -> dict[str, bool]:
+        """Check which Ollama models are available."""
+        available = {}
+        try:
+            models = self.ollama.list()
+            model_names = [m.get("name", "") for m in models.get("models", [])]
+            model_bases = [n.split(":")[0] for n in model_names]
+
+            available["llm"] = any(
+                self.generation_model.split(":")[0] in n for n in model_bases
+            )
+            available["embed"] = any(
+                self.embed_model.split(":")[0] in n for n in model_bases
+            )
+            available["rerank"] = any(
+                self.rerank_model.split(":")[0] in n for n in model_bases
+            )
+        except Exception:
+            available = {"llm": False, "embed": False, "rerank": False}
+
+        return available

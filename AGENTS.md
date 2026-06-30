@@ -24,11 +24,12 @@
 ## 技術選擇
 
 - Python 3.10+。
-- Ollama 作為本機 embedding 與 LLM runtime。
-- `nomic-embed-text` 作為預設 embedding model。
-- `llama3.2:3b` 作為 Raspberry Pi 5 16GB 上較務實的預設生成模型。
-- ChromaDB 使用本機 persistent storage，預設資料夾為 `./chroma_db`。
-- SQLite 作為輕量級 metadata 儲存（對話、回饋、圖譜），預設資料夾為 `./rag_storage`。
+- Ollama 作為本機模型 runtime，執行三個模型：
+  - `nomic-embed-text`：Embedding model（向量嵌入）
+  - `llama3.2:3b`：LLM model（生成回答）
+  - `bge-reranker-base`：Reranking model（重新排序，可選）
+- ChromaDB 作為 Vector DB，使用本機 persistent storage，預設資料夾為 `./chroma_db`。
+- SQLite 作為 Graph DB 與 metadata 儲存（實體、關係、對話、回饋），預設資料夾為 `./rag_storage`。
 - Gradio 提供本機 Web GUI，預設 host `0.0.0.0`、port `7860`。
 - `EnhancedRAG.stream_answer()` 與 `LocalRAG.stream_answer()` 提供 streaming output。
 
@@ -42,11 +43,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-準備 Ollama 模型：
+準備 Ollama 模型（三個模型）：
 
 ```sh
-ollama pull nomic-embed-text
-ollama pull llama3.2:3b
+ollama pull nomic-embed-text    # Embedding
+ollama pull llama3.2:3b         # LLM
+ollama pull bge-reranker-base   # Reranking（可選）
 ```
 
 執行 CLI 互動模式：

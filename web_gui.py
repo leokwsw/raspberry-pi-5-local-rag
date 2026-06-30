@@ -19,6 +19,7 @@ from enhanced_rag import (
     DEFAULT_COLLECTION,
     DEFAULT_EMBED_MODEL,
     DEFAULT_GENERATION_MODEL,
+    DEFAULT_RERANK_MODEL,
 )
 from storage import StorageManager, Conversation, Document, Feedback
 from media_processor import get_supported_extensions
@@ -36,11 +37,13 @@ def build_rag(
     collection: str,
     embed_model: str,
     generation_model: str,
+    rerank_model: str,
     top_k: int,
     storage_path: str,
     rebuild: bool,
     use_feedback: bool = True,
     use_graph: bool = True,
+    use_reranking: bool = True,
 ) -> EnhancedRAG:
     Path(db_path).mkdir(parents=True, exist_ok=True)
     rag = EnhancedRAG(
@@ -48,10 +51,12 @@ def build_rag(
         collection_name=collection,
         embed_model=embed_model,
         generation_model=generation_model,
+        rerank_model=rerank_model,
         top_k=top_k,
         storage_path=storage_path,
         use_feedback=use_feedback,
         use_graph=use_graph,
+        use_reranking=use_reranking,
     )
     rag.prepare(rebuild=rebuild)
     return rag
@@ -66,6 +71,8 @@ def format_sources(sources: list[RetrievedSource], show_scores: bool = False) ->
         header = f"### {i}. {source.title}"
         if show_scores:
             score_info = f" (dist={source.distance:.4f}" if source.distance else " (dist=N/A"
+            if source.rerank_score is not None:
+                score_info += f", rerank={source.rerank_score:.2f}"
             if source.feedback_score != 0:
                 score_info += f", fb={source.feedback_score:+.1f}"
             if source.graph_boost != 0:
@@ -119,8 +126,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--host", default="0.0.0.0", help="Server host.")
     parser.add_argument("--port", type=int, default=7860, help="Server port.")
-    parser.add_argument("--model", default=DEFAULT_GENERATION_MODEL, help="Ollama generation model.")
+    parser.add_argument("--model", default=DEFAULT_GENERATION_MODEL, help="Ollama LLM generation model.")
     parser.add_argument("--embed-model", default=DEFAULT_EMBED_MODEL, help="Ollama embedding model.")
+    parser.add_argument("--rerank-model", default=DEFAULT_RERANK_MODEL, help="Ollama reranking model.")
     parser.add_argument("--db-path", default=DEFAULT_DB_PATH, help="ChromaDB storage path.")
     parser.add_argument("--collection", default=DEFAULT_COLLECTION, help="ChromaDB collection name.")
     parser.add_argument("--storage-path", default="./rag_storage", help="Storage path for conversations and metadata.")
@@ -129,6 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--share", action="store_true", help="Create a public Gradio share link.")
     parser.add_argument("--no-feedback", action="store_true", help="Disable feedback RAG.")
     parser.add_argument("--no-graph", action="store_true", help="Disable graph DB features.")
+    parser.add_argument("--no-reranking", action="store_true", help="Disable reranking.")
     return parser
 
 
@@ -147,17 +156,20 @@ def main() -> int:
             collection=args.collection,
             embed_model=args.embed_model,
             generation_model=args.model,
+            rerank_model=args.rerank_model,
             top_k=args.top_k,
             storage_path=args.storage_path,
             rebuild=args.rebuild,
             use_feedback=not args.no_feedback,
             use_graph=not args.no_graph,
+            use_reranking=not args.no_reranking,
         )
     except Exception as exc:
         print(f"Error while preparing RAG: {exc}")
         print("Check that Ollama is running and required models are installed:")
         print(f"  ollama pull {args.embed_model}")
         print(f"  ollama pull {args.model}")
+        print(f"  ollama pull {args.rerank_model}  # Optional for reranking")
         return 1
 
     current_conversation_id: Optional[str] = None
@@ -359,26 +371,35 @@ def main() -> int:
     # Settings functions
     def get_stats():
         stats = rag.get_stats()
+        model_status = rag.check_models()
+        
+        def model_status_icon(available: bool) -> str:
+            return "✅" if available else "⚠️"
+        
         lines = [
             "## System Statistics\n",
-            "### Vector Database",
+            "### Ollama Models (3 models required)",
+            f"- {model_status_icon(model_status.get('llm', False))} LLM: `{stats['models']['llm_model']}`",
+            f"- {model_status_icon(model_status.get('embed', False))} Embedding: `{stats['models']['embed_model']}`",
+            f"- {model_status_icon(model_status.get('rerank', False))} Reranking: `{stats['models']['rerank_model']}`",
+            "",
+            "### Vector Database (ChromaDB)",
             f"- Collection: {stats['vector_db']['collection']}",
             f"- Documents: {stats['vector_db']['document_count']}",
+            "",
+            "### Graph Database (SQLite)",
+            f"- Entities: {stats['storage']['entities']}",
+            f"- Relationships: {stats['storage']['relationships']}",
             "",
             "### Storage",
             f"- Conversations: {stats['storage']['conversations']}",
             f"- Messages: {stats['storage']['messages']}",
             f"- Documents: {stats['storage']['documents']}",
             f"- Feedback entries: {stats['storage']['feedback']}",
-            f"- Entities: {stats['storage']['entities']}",
-            f"- Relationships: {stats['storage']['relationships']}",
             "",
-            "### Models",
-            f"- Embedding: {stats['models']['embed_model']}",
-            f"- Generation: {stats['models']['generation_model']}",
-            "",
-            "### Settings",
+            "### RAG Settings",
             f"- Top-K: {stats['settings']['top_k']}",
+            f"- Reranking: {'Enabled' if stats['settings']['use_reranking'] else 'Disabled'}",
             f"- Feedback RAG: {'Enabled' if stats['settings']['use_feedback'] else 'Disabled'}",
             f"- Graph DB: {'Enabled' if stats['settings']['use_graph'] else 'Disabled'}",
         ]

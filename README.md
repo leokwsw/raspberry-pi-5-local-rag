@@ -10,6 +10,19 @@ This project provides multiple entry points:
 
 All versions share the same RAG pipeline, ChromaDB storage, and Ollama models.
 
+## System Requirements
+
+On Raspberry Pi 5 16GB, the system runs:
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **LLM** | Ollama (`llama3.2:3b`) | Answer generation |
+| **Embedding** | Ollama (`nomic-embed-text`) | Vector embeddings |
+| **Reranking** | Ollama (`bge-reranker-base`) | Improve retrieval quality |
+| **Vector DB** | ChromaDB | Semantic search |
+| **Graph DB** | SQLite | Entity relationships |
+| **Application** | Python + Gradio | Web interface |
+
 ## Features
 
 ### Core RAG Features
@@ -19,6 +32,7 @@ All versions share the same RAG pipeline, ChromaDB storage, and Ollama models.
 - Retrieval-Augmented Generation workflow
 
 ### Enhanced Features (web_gui.py)
+- **Reranking**: Use dedicated reranker model for better retrieval
 - **Dataset Management**: Upload and index text, audio, and video files
 - **Chat History**: Save and load conversation sessions
 - **Feedback RAG**: Rate answers to improve retrieval quality over time
@@ -37,26 +51,25 @@ All versions share the same RAG pipeline, ChromaDB storage, and Ollama models.
         │           │           │           │
 ┌───────┴───────────┴───────────┴───────────┴─────────────────┐
 │                    Enhanced RAG Engine                       │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐               │
-│  │  Retrieval │ │  Feedback  │ │   Graph    │               │
-│  │  + Ranking │ │  Scoring   │ │   Boost    │               │
-│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘               │
-└────────┼──────────────┼──────────────┼──────────────────────┘
-         │              │              │
-┌────────┴──────────────┴──────────────┴──────────────────────┐
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌──────────┐  │
+│  │  Retrieval │ │  Reranking │ │  Feedback  │ │  Graph   │  │
+│  │  (Vector)  │ │  (Model)   │ │  Scoring   │ │  Boost   │  │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └────┬─────┘  │
+└────────┼──────────────┼──────────────┼─────────────┼────────┘
+         │              │              │             │
+┌────────┴──────────────┴──────────────┴─────────────┴────────┐
 │                      Storage Layer                           │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │ ChromaDB │ │ SQLite   │ │ Graph DB │ │ Feedback │        │
-│  │ (Vector) │ │ (Meta)   │ │ (Entity) │ │ (Rating) │        │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
+│  ┌──────────────────────┐  ┌────────────────────────────┐   │
+│  │ ChromaDB (Vector DB) │  │ SQLite (Graph DB/Metadata) │   │
+│  └──────────────────────┘  └────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
          │
 ┌────────┴────────────────────────────────────────────────────┐
-│                     Ollama (Local LLM)                       │
-│  ┌────────────────┐ ┌────────────────┐                      │
-│  │ nomic-embed    │ │ llama3.2:3b    │                      │
-│  │ (Embedding)    │ │ (Generation)   │                      │
-│  └────────────────┘ └────────────────┘                      │
+│              Ollama (3 Models on Raspberry Pi 5)            │
+│  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐   │
+│  │ nomic-embed    │ │ llama3.2:3b    │ │ bge-reranker   │   │
+│  │ (Embedding)    │ │ (LLM)          │ │ (Reranking)    │   │
+│  └────────────────┘ └────────────────┘ └────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,19 +107,33 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Install Ollama
+### 2. Install Ollama and Models
 
-Install Ollama from [ollama.com](https://ollama.com), then pull the default models:
+Install Ollama from [ollama.com](https://ollama.com), then pull the required models:
 
 ```sh
+# Required: Embedding model
 ollama pull nomic-embed-text
+
+# Required: LLM for generation
 ollama pull llama3.2:3b
+
+# Optional: Reranking model (improves retrieval quality)
+ollama pull bge-reranker-base
 ```
+
+If the reranking model is not available, the system will fallback to LLM-based reranking.
 
 Make sure Ollama is running:
 
 ```sh
 ollama serve
+```
+
+Verify models are installed:
+
+```sh
+ollama list
 ```
 
 ### 3. Optional: Audio/Video Support
@@ -191,13 +218,16 @@ Options:
 # Basic options
 python3 web_gui.py --host 0.0.0.0 --port 7860
 
-# Model options
-python3 web_gui.py --model llama3.2:3b --embed-model nomic-embed-text
+# Model options (3 models)
+python3 web_gui.py --model llama3.2:3b           # LLM
+python3 web_gui.py --embed-model nomic-embed-text # Embedding
+python3 web_gui.py --rerank-model bge-reranker-base # Reranking
 
 # Storage options
 python3 web_gui.py --db-path ./chroma_db --storage-path ./rag_storage
 
 # Feature toggles
+python3 web_gui.py --no-reranking # Disable reranking
 python3 web_gui.py --no-feedback  # Disable feedback RAG
 python3 web_gui.py --no-graph     # Disable knowledge graph
 
@@ -289,14 +319,16 @@ Delete these folders or run with `--rebuild` to recreate the index.
 |--------|---------|-------------|
 | `--host` | 0.0.0.0 | Server host |
 | `--port` | 7860 | Server port |
-| `--model` | llama3.2:3b | Ollama generation model |
+| `--model` | llama3.2:3b | Ollama LLM generation model |
 | `--embed-model` | nomic-embed-text | Ollama embedding model |
-| `--db-path` | ./chroma_db | ChromaDB storage path |
-| `--storage-path` | ./rag_storage | Metadata storage path |
+| `--rerank-model` | bge-reranker-base | Ollama reranking model |
+| `--db-path` | ./chroma_db | ChromaDB (Vector DB) storage path |
+| `--storage-path` | ./rag_storage | SQLite (Graph DB/Metadata) storage path |
 | `--collection` | pi_local_rag | ChromaDB collection name |
 | `--top-k` | 3 | Number of retrieved chunks |
 | `--rebuild` | false | Recreate the index on startup |
 | `--share` | false | Create public Gradio link |
+| `--no-reranking` | false | Disable reranking |
 | `--no-feedback` | false | Disable feedback RAG |
 | `--no-graph` | false | Disable knowledge graph |
 
@@ -310,11 +342,23 @@ Check that Ollama is running:
 ollama list
 ```
 
-If a model is missing:
+If models are missing, pull them:
 
 ```sh
-ollama pull nomic-embed-text
-ollama pull llama3.2:3b
+# Required models
+ollama pull nomic-embed-text    # Embedding
+ollama pull llama3.2:3b         # LLM
+
+# Optional (for better retrieval)
+ollama pull bge-reranker-base   # Reranking
+```
+
+### Reranking Not Working
+
+If the reranking model is not available, the system automatically falls back to LLM-based reranking. To disable reranking entirely:
+
+```sh
+python3 web_gui.py --no-reranking
 ```
 
 ### Audio/Video Processing Errors
