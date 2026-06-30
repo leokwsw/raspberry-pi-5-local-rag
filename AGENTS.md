@@ -35,14 +35,26 @@
 
 ## 常用命令
 
-### 使用 Shell Scripts（推薦）
+### 使用 Shell Scripts（推薦，使用 PM2）
 
 ```sh
-./setup.sh       # 安裝依賴、下載模型
-./run.sh         # 啟動 Web GUI
-./run.sh --cli   # 啟動 CLI 模式
-./stop.sh        # 停止服務
-./stop.sh --all  # 停止服務與 Ollama
+./setup.sh          # 安裝依賴、PM2、下載模型
+./run.sh            # 使用 PM2 啟動 Web GUI（背景執行）
+./run.sh --no-pm2   # 前景執行（不使用 PM2）
+./run.sh --cli      # 啟動 CLI 模式
+./stop.sh           # 停止服務
+./stop.sh --delete  # 停止並從 PM2 移除
+./stop.sh --all     # 停止服務與 Ollama
+```
+
+### PM2 常用指令
+
+```sh
+pm2 logs rag        # 查看日誌
+pm2 monit           # 監控儀表板
+pm2 restart rag     # 重啟應用
+pm2 list            # 列出所有進程
+pm2 save            # 儲存進程列表（開機自動啟動）
 ```
 
 ### 手動建立環境

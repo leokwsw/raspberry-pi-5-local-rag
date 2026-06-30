@@ -169,11 +169,17 @@ sudo apt install ffmpeg
 brew install ffmpeg
 ```
 
-## Shell Scripts
+## Shell Scripts (PM2)
+
+All scripts use **PM2** for process management, providing:
+- Background running (daemonize)
+- Auto-restart on crash
+- Log management
+- Easy monitoring
 
 ### setup.sh
 
-Installs all dependencies and pulls Ollama models:
+Installs all dependencies, PM2, and pulls Ollama models:
 
 ```sh
 ./setup.sh
@@ -183,22 +189,26 @@ This script will:
 1. Check Python version
 2. Create virtual environment
 3. Install Python dependencies
-4. Check Ollama installation
-5. Pull required models (nomic-embed-text, llama3.2:3b, bge-reranker-base)
-6. Create data directories
+4. Install Node.js and PM2 (if not present)
+5. Check Ollama installation
+6. Pull required models (nomic-embed-text, llama3.2:3b, bge-reranker-base)
+7. Create data directories
 
 ### run.sh
 
-Start the RAG application:
+Start the RAG application with PM2:
 
 ```sh
-# Start enhanced Web GUI (default)
+# Start with PM2 (background, auto-restart)
 ./run.sh
 
 # Start on different port
 ./run.sh --port 8080
 
-# Start CLI mode
+# Run in foreground (no PM2)
+./run.sh --no-pm2
+
+# Start CLI mode (always foreground)
 ./run.sh --cli
 
 # Start basic Gradio GUI
@@ -213,11 +223,24 @@ Start the RAG application:
 Stop running processes:
 
 ```sh
-# Stop RAG application
+# Stop RAG application (keeps in PM2 list)
 ./stop.sh
+
+# Stop and remove from PM2
+./stop.sh --delete
 
 # Stop RAG and Ollama service
 ./stop.sh --all
+```
+
+### PM2 Commands
+
+```sh
+pm2 logs rag          # View application logs
+pm2 monit             # Real-time monitoring dashboard
+pm2 restart rag       # Restart application
+pm2 list              # Show all processes
+pm2 save              # Save process list for startup
 ```
 
 ## Usage
