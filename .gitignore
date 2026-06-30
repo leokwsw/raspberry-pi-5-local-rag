@@ -2,4 +2,9 @@
 .idea
 __pycache__
 chroma_db/
+rag_storage/
+uploads/
 .DS_Store
+*.pyc
+*.pyo
+.rag_pid
