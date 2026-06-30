@@ -97,7 +97,22 @@ openai-whisper  # or faster-whisper for better performance
 ffmpeg          # system package for video processing
 ```
 
-## Setup
+## Quick Start
+
+The easiest way to get started is using the provided shell scripts:
+
+```sh
+# 1. Setup (install dependencies and pull models)
+./setup.sh
+
+# 2. Run the application
+./run.sh
+
+# 3. Stop when done
+./stop.sh
+```
+
+## Manual Setup
 
 ### 1. Create Virtual Environment
 
@@ -152,6 +167,57 @@ sudo apt install ffmpeg
 
 # macOS
 brew install ffmpeg
+```
+
+## Shell Scripts
+
+### setup.sh
+
+Installs all dependencies and pulls Ollama models:
+
+```sh
+./setup.sh
+```
+
+This script will:
+1. Check Python version
+2. Create virtual environment
+3. Install Python dependencies
+4. Check Ollama installation
+5. Pull required models (nomic-embed-text, llama3.2:3b, bge-reranker-base)
+6. Create data directories
+
+### run.sh
+
+Start the RAG application:
+
+```sh
+# Start enhanced Web GUI (default)
+./run.sh
+
+# Start on different port
+./run.sh --port 8080
+
+# Start CLI mode
+./run.sh --cli
+
+# Start basic Gradio GUI
+./run.sh --basic
+
+# Show help
+./run.sh --help
+```
+
+### stop.sh
+
+Stop running processes:
+
+```sh
+# Stop RAG application
+./stop.sh
+
+# Stop RAG and Ollama service
+./stop.sh --all
 ```
 
 ## Usage
@@ -391,10 +457,13 @@ python3 web_gui.py --rebuild
 
 | File | Description |
 |------|-------------|
+| `setup.sh` | Setup script (install dependencies, pull models) |
+| `run.sh` | Run script (start application) |
+| `stop.sh` | Stop script (stop running processes) |
 | `app.py` | CLI RAG application |
 | `app_gradio.py` | Basic Gradio web GUI |
 | `web_gui.py` | Enhanced Gradio web GUI |
-| `enhanced_rag.py` | Enhanced RAG engine with feedback and graph |
+| `enhanced_rag.py` | Enhanced RAG engine with reranking, feedback, graph |
 | `storage.py` | SQLite storage for conversations, feedback, graph |
 | `media_processor.py` | Text/audio/video processing |
 | `requirements.txt` | Python dependencies |

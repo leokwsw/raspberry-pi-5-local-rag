@@ -35,7 +35,17 @@
 
 ## 常用命令
 
-建立環境：
+### 使用 Shell Scripts（推薦）
+
+```sh
+./setup.sh       # 安裝依賴、下載模型
+./run.sh         # 啟動 Web GUI
+./run.sh --cli   # 啟動 CLI 模式
+./stop.sh        # 停止服務
+./stop.sh --all  # 停止服務與 Ollama
+```
+
+### 手動建立環境
 
 ```sh
 python3 -m venv .venv
@@ -149,17 +159,20 @@ python3 web_gui.py
 
 ```
 .
+├── setup.sh            # 安裝腳本
+├── run.sh              # 啟動腳本
+├── stop.sh             # 停止腳本
 ├── app.py              # CLI 入口
 ├── app_gradio.py       # 基本 Web GUI
 ├── web_gui.py          # 增強版 Web GUI
-├── enhanced_rag.py     # 增強版 RAG 引擎
-├── storage.py          # SQLite 儲存層
+├── enhanced_rag.py     # 增強版 RAG 引擎（含 Reranking）
+├── storage.py          # SQLite 儲存層（Graph DB）
 ├── media_processor.py  # 多媒體處理
 ├── requirements.txt    # Python 依賴
 ├── README.md           # 使用說明
 ├── AGENTS.md           # 開發指南
 ├── .gitignore          # Git 忽略設定
 ├── chroma_db/          # ChromaDB 向量資料庫 (gitignore)
-├── rag_storage/        # SQLite metadata 資料庫 (gitignore)
+├── rag_storage/        # SQLite Graph DB / metadata (gitignore)
 └── uploads/            # 上傳檔案暫存 (gitignore)
 ```
