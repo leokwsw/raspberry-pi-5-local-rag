@@ -22,6 +22,15 @@ CREATE TABLE IF NOT EXISTS chunks(
  chunk_index INTEGER NOT NULL, text TEXT NOT NULL, token_count INTEGER NOT NULL,
  metadata TEXT NOT NULL, embedding TEXT NOT NULL
 );
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+ text, content='chunks', content_rowid='rowid', tokenize='unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
+ INSERT INTO chunks_fts(rowid,text) VALUES(new.rowid,new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
+ INSERT INTO chunks_fts(chunks_fts,rowid,text) VALUES('delete',old.rowid,old.text);
+END;
 UPDATE schema_version SET version=2;
 """
 
