@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS relationships(
  source_chunk_id TEXT NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
  confidence REAL NOT NULL, UNIQUE(subject_id,predicate,object_id,source_chunk_id)
 );
+CREATE TABLE IF NOT EXISTS graph_communities(
+ id TEXT PRIMARY KEY, members TEXT NOT NULL, summary TEXT,
+ updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS documents(
  id TEXT PRIMARY KEY, name TEXT NOT NULL, media_type TEXT NOT NULL,
  created_at TEXT NOT NULL, status TEXT NOT NULL
