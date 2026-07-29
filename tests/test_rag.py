@@ -33,3 +33,12 @@ def test_reindex_updates_all_document_chunks(tmp_path: Path) -> None:
     rag = RagService(database, EchoGenerator())
     document_id = rag.ingest("facts.txt", "text/plain", "A short fact.")
     assert rag.reindex(document_id) == 1
+
+
+def test_retrieval_drops_results_far_below_best_match(tmp_path: Path) -> None:
+    database = Database(tmp_path / "rag.db")
+    database.migrate()
+    rag = RagService(database, EchoGenerator())
+    rag.ingest("relevant.txt", "text/plain", "ARM processor processor processor")
+    rag.ingest("noise.txt", "text/plain", "unrelated weather")
+    assert [item.document_name for item in rag.retrieve("processor")] == ["relevant.txt"]

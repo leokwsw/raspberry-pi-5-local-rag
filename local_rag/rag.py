@@ -143,7 +143,10 @@ class RagService:
             for row in rows
         ]
         ranked = sorted(evidence, key=lambda item: item.score, reverse=True)
-        return [item for item in ranked if item.score > 0.05][:limit]
+        if not ranked:
+            return []
+        cutoff = max(0.2, ranked[0].score - 0.1)
+        return [item for item in ranked if item.score >= cutoff][:limit]
 
     async def answer(self, question: str) -> tuple[str, list[Evidence]]:
         retrieved = self.retrieve(question, limit=3)
