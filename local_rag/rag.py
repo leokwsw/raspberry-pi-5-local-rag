@@ -6,7 +6,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Protocol
+
+import httpx
 
 from local_rag.database import Database
 from local_rag.generation import Generator
@@ -29,13 +31,39 @@ def parse_document(path: Path, media_type: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+class Embedder(Protocol):
+    def embed(self, text: str) -> list[float]: ...
+
+
+class HashEmbedder:
+    def __init__(self, dimensions: int = 256) -> None:
+        self.dimensions = dimensions
+
+    def embed(self, text: str) -> list[float]:
+        vector = [0.0] * self.dimensions
+        for token in re.findall(r"[\w\u3400-\u9fff]+", text.lower()):
+            digest = hashlib.blake2b(token.encode(), digest_size=8).digest()
+            vector[int.from_bytes(digest, "big") % self.dimensions] += 1.0
+        norm = math.sqrt(sum(value * value for value in vector)) or 1.0
+        return [value / norm for value in vector]
+
+
+class HttpEmbedder:
+    def __init__(self, base_url: str, model: str) -> None:
+        self.base_url, self.model = base_url.rstrip("/"), model
+
+    def embed(self, text: str) -> list[float]:
+        response = httpx.post(
+            f"{self.base_url}/v1/embeddings",
+            json={"model": self.model, "input": text},
+            timeout=120,
+        )
+        response.raise_for_status()
+        return [float(value) for value in response.json()["data"][0]["embedding"]]
+
+
 def embed(text: str, dimensions: int = 256) -> list[float]:
-    vector = [0.0] * dimensions
-    for token in re.findall(r"[\w\u3400-\u9fff]+", text.lower()):
-        digest = hashlib.blake2b(token.encode(), digest_size=8).digest()
-        vector[int.from_bytes(digest, "big") % dimensions] += 1.0
-    norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-    return [value / norm for value in vector]
+    return HashEmbedder(dimensions).embed(text)
 
 
 @dataclass(frozen=True)
@@ -52,8 +80,11 @@ class Evidence:
 
 
 class RagService:
-    def __init__(self, database: Database, generator: Generator) -> None:
+    def __init__(
+        self, database: Database, generator: Generator, embedder: Optional[Embedder] = None
+    ) -> None:
         self.database, self.generator = database, generator
+        self.embedder = embedder or HashEmbedder()
 
     def ingest(self, name: str, media_type: str, text: str) -> str:
         document_id = str(uuid.uuid4())
@@ -68,7 +99,7 @@ class RagService:
                 connection.execute(
                     "INSERT INTO chunks VALUES(?,?,?,?,?,?,?)",
                     (str(uuid.uuid4()), document_id, index, value, len(value.split()),
-                     json.dumps({}), json.dumps(embed(value))),
+                     json.dumps({}), json.dumps(self.embedder.embed(value))),
                 )
         return document_id
 
@@ -85,8 +116,20 @@ class RagService:
             result = connection.execute("DELETE FROM documents WHERE id=?", (document_id,))
         return result.rowcount > 0
 
+    def reindex(self, document_id: str) -> int:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT id,text FROM chunks WHERE document_id=?", (document_id,)
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    "UPDATE chunks SET embedding=? WHERE id=?",
+                    (json.dumps(self.embedder.embed(row["text"])), row["id"]),
+                )
+        return len(rows)
+
     def retrieve(self, query: str, limit: int = 5) -> list[Evidence]:
-        query_vector = embed(query)
+        query_vector = self.embedder.embed(query)
         with self.database.connect() as connection:
             rows = connection.execute(
                 "SELECT c.id,c.document_id,d.name,c.text,c.embedding "
@@ -99,7 +142,8 @@ class RagService:
             )
             for row in rows
         ]
-        return sorted(evidence, key=lambda item: item.score, reverse=True)[:limit]
+        ranked = sorted(evidence, key=lambda item: item.score, reverse=True)
+        return [item for item in ranked if item.score > 0.05][:limit]
 
     async def answer(self, question: str) -> tuple[str, list[Evidence]]:
         evidence = self.retrieve(question)

@@ -24,3 +24,11 @@ async def test_ingest_retrieve_answer_has_citation(tmp_path: Path) -> None:
 
 def test_web_distribution_is_mountable() -> None:
     assert (Path(__file__).parent.parent / "apps" / "web" / "index.html").is_file()
+
+
+def test_reindex_updates_all_document_chunks(tmp_path: Path) -> None:
+    database = Database(tmp_path / "rag.db")
+    database.migrate()
+    rag = RagService(database, EchoGenerator())
+    document_id = rag.ingest("facts.txt", "text/plain", "A short fact.")
+    assert rag.reindex(document_id) == 1

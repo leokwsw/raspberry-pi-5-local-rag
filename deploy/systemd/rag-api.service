@@ -1,7 +1,7 @@
 [Unit]
 Description=Pi Local RAG API
-After=network.target llama-server.service
-Wants=llama-server.service
+After=network.target llama-server.service embedding-server.service
+Wants=llama-server.service embedding-server.service
 
 [Service]
 Type=simple

@@ -18,7 +18,7 @@ from local_rag.generation import (
     OpenAICompatibleGenerator,
 )
 from local_rag.graph import GraphStore
-from local_rag.rag import RagService, parse_document
+from local_rag.rag import HashEmbedder, HttpEmbedder, RagService, parse_document
 from local_rag.resources import JobQueue, system_metrics
 from local_rag.voice import VoiceService
 
@@ -39,7 +39,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         generator = OllamaGenerator(config.ollama_url, config.model_name)
     else:
         generator = OpenAICompatibleGenerator(config.llamacpp_url, config.model_name)
-    rag = RagService(database, generator)
+    embedder = (
+        HttpEmbedder(config.embedding_url, config.embedding_model)
+        if config.embedding_model
+        else HashEmbedder()
+    )
+    rag = RagService(database, generator, embedder)
     jobs = JobQueue(database)
     graph = GraphStore(database)
     voice = VoiceService(
@@ -94,10 +99,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(404, detail={"code": "document_not_found"})
 
     @app.post("/documents/{document_id}/ingest")
-    def reindex(document_id: str) -> dict[str, str]:
+    def reindex(document_id: str) -> dict[str, object]:
         if not any(item["id"] == document_id for item in rag.documents()):
             raise HTTPException(404, detail={"code": "document_not_found"})
-        return {"status": "already_indexed"}
+        return {"status": "reindexed", "chunks": rag.reindex(document_id)}
 
     @app.post("/chat")
     async def chat(request: ChatRequest) -> StreamingResponse:

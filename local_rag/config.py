@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     llamacpp_url: str = "http://127.0.0.1:8080"
     ollama_url: str = "http://127.0.0.1:11434"
     model_name: str = ""
+    embedding_url: str = "http://127.0.0.1:8081"
+    embedding_model: str = ""
     chunk_size: int = 800
     chunk_overlap: int = 120
     enable_kg: bool = False

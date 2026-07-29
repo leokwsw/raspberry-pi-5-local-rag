@@ -19,7 +19,12 @@ class OpenAICompatibleGenerator:
         async with httpx.AsyncClient(timeout=300) as client:
             response = await client.post(
                 f"{self.base_url}/v1/chat/completions",
-                json={"model": self.model, "messages": [{"role": "user", "content": prompt}]},
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 256,
+                    "temperature": 0.2,
+                },
             )
             response.raise_for_status()
             return str(response.json()["choices"][0]["message"]["content"])
