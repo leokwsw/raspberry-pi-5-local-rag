@@ -1,0 +1,5 @@
+[
+  {"question":"Which CPU does Raspberry Pi use?","language":"en","relevant":["arm"]},
+  {"question":"樹莓派使用甚麼處理器？","language":"zh-Hant","relevant":["arm"]},
+  {"question":"Raspberry Pi 的本地模型 runtime 是甚麼？","language":"bilingual","relevant":["llama.cpp"]}
+]

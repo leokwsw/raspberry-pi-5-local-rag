@@ -1,0 +1,21 @@
+[Unit]
+Description=Pi Local RAG API
+After=network.target llama-server.service embedding-server.service
+Wants=llama-server.service embedding-server.service
+
+[Service]
+Type=simple
+User=rag
+Group=rag
+WorkingDirectory=/opt/pi-local-rag
+EnvironmentFile=-/etc/pi-local-rag.env
+ExecStart=/opt/pi-local-rag/.venv/bin/uvicorn local_rag.api:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pi-local-rag
+
+[Install]
+WantedBy=multi-user.target
