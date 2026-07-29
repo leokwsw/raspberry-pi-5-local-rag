@@ -6,6 +6,7 @@ from typing import Annotated, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from local_rag.config import Settings
@@ -125,6 +126,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.post("/graph/query")
     def graph_query(request: ChatRequest) -> list[dict[str, object]]:
         return graph.search(request.question)
+
+    web_dist = Path(__file__).resolve().parent.parent / "apps" / "web" / "dist"
+    if web_dist.is_dir():
+        app.mount("/", StaticFiles(directory=web_dist, html=True), name="web")
 
     return app
 

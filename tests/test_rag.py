@@ -20,3 +20,7 @@ async def test_ingest_retrieve_answer_has_citation(tmp_path: Path) -> None:
     answer, evidence = await rag.answer("What CPU?")
     assert evidence[0].document_id == document_id
     assert evidence[0].citation() in answer
+
+
+def test_web_distribution_is_mountable() -> None:
+    assert (Path(__file__).parent.parent / "apps" / "web" / "index.html").is_file()
