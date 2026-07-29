@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     enable_kg: bool = False
     enable_graphrag: bool = False
     enable_voice: bool = False
+    whisper_command: str = "whisper-cli"
+    whisper_model: Path = Path("models/stt/model.bin")
+    piper_command: str = "piper"
+    piper_model: Path = Path("models/tts/voice.onnx")
 
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

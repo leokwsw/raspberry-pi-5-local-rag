@@ -19,6 +19,7 @@ from local_rag.generation import (
 from local_rag.graph import GraphStore
 from local_rag.rag import RagService, parse_document
 from local_rag.resources import JobQueue, system_metrics
+from local_rag.voice import VoiceService
 
 
 class ChatRequest(BaseModel):
@@ -40,6 +41,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     rag = RagService(database, generator)
     jobs = JobQueue(database)
     graph = GraphStore(database)
+    voice = VoiceService(
+        config.whisper_command, config.whisper_model, config.piper_command, config.piper_model
+    )
     jobs.recover()
     app = FastAPI(title="Pi Local RAG", version="0.1.0")
     app.state.rag = rag
@@ -51,6 +55,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     @app.get("/metrics")
     def metrics() -> dict[str, object]:
         return system_metrics(str(config.data_dir))
+
+    @app.get("/voice/capabilities")
+    def voice_capabilities() -> dict[str, object]:
+        return {"enabled": config.enable_voice, **voice.capabilities()}
 
     @app.get("/jobs")
     def list_jobs() -> list[dict[str, object]]:
