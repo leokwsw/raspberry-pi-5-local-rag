@@ -1,0 +1,18 @@
+[Unit]
+Description=Pi Local RAG Worker
+After=rag-api.service
+
+[Service]
+Type=simple
+User=rag
+Group=rag
+WorkingDirectory=/opt/pi-local-rag
+EnvironmentFile=-/etc/pi-local-rag.env
+ExecStart=/opt/pi-local-rag/.venv/bin/python -m local_rag.worker
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pi-local-rag
+
+[Install]
+WantedBy=multi-user.target
