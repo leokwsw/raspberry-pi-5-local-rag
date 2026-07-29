@@ -10,3 +10,15 @@ logs/
 *.pyo
 .rag_pid
 ecosystem.config.js
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+data/
+models/
+benchmark/results/**/*.json
+apps/web/node_modules/
+apps/web/dist/
