@@ -18,6 +18,18 @@ CREATE TABLE IF NOT EXISTS jobs(
  payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, error TEXT
 );
+CREATE TABLE IF NOT EXISTS entities(
+ id TEXT PRIMARY KEY, canonical_name TEXT NOT NULL UNIQUE, entity_type TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS entity_aliases(
+ alias TEXT PRIMARY KEY, entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS relationships(
+ id TEXT PRIMARY KEY, subject_id TEXT NOT NULL REFERENCES entities(id),
+ predicate TEXT NOT NULL, object_id TEXT NOT NULL REFERENCES entities(id),
+ source_chunk_id TEXT NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+ confidence REAL NOT NULL, UNIQUE(subject_id,predicate,object_id,source_chunk_id)
+);
 CREATE TABLE IF NOT EXISTS documents(
  id TEXT PRIMARY KEY, name TEXT NOT NULL, media_type TEXT NOT NULL,
  created_at TEXT NOT NULL, status TEXT NOT NULL

@@ -16,6 +16,7 @@ from local_rag.generation import (
     OllamaGenerator,
     OpenAICompatibleGenerator,
 )
+from local_rag.graph import GraphStore
 from local_rag.rag import RagService, parse_document
 from local_rag.resources import JobQueue, system_metrics
 
@@ -38,6 +39,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         generator = OpenAICompatibleGenerator(config.llamacpp_url, config.model_name)
     rag = RagService(database, generator)
     jobs = JobQueue(database)
+    graph = GraphStore(database)
     jobs.recover()
     app = FastAPI(title="Pi Local RAG", version="0.1.0")
     app.state.rag = rag
@@ -96,6 +98,25 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             yield f"data: {json.dumps(payload)}\n\n"
 
         return StreamingResponse(events(), media_type="text/event-stream")
+
+    @app.get("/graph/entities")
+    def entities(q: str = "") -> list[dict[str, object]]:
+        return graph.search(q)
+
+    @app.get("/graph/entities/{entity_id}")
+    def entity(entity_id: str) -> dict[str, object]:
+        matches = [item for item in graph.search("") if item["id"] == entity_id]
+        if not matches:
+            raise HTTPException(404, detail={"code": "entity_not_found"})
+        return {"entity": matches[0], "relationships": graph.neighbours(entity_id)}
+
+    @app.get("/graph/relationships")
+    def relationships(entity_id: str) -> list[dict[str, object]]:
+        return graph.neighbours(entity_id)
+
+    @app.post("/graph/query")
+    def graph_query(request: ChatRequest) -> list[dict[str, object]]:
+        return graph.search(request.question)
 
     return app
 
