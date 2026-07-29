@@ -22,3 +22,6 @@ cd apps/web && npm install && npm run build
 
 The API exposes documents, SSE chat, jobs, metrics, graph search and voice capabilities.
 Hardware benchmark outputs remain `pending-device-validation` until executed on the target Pi.
+
+完整NVMe、llama.cpp、模型及systemd安裝步驟見
+[Raspberry Pi 5 部署指南](docs/pi-deployment.md)。
