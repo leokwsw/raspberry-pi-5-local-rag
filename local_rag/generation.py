@@ -22,7 +22,7 @@ class OpenAICompatibleGenerator:
                 json={
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 256,
+                    "max_tokens": 160,
                     "temperature": 0.2,
                 },
             )

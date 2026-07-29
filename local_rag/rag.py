@@ -146,8 +146,19 @@ class RagService:
         return [item for item in ranked if item.score > 0.05][:limit]
 
     async def answer(self, question: str) -> tuple[str, list[Evidence]]:
-        evidence = self.retrieve(question)
-        context = "\n".join(f"{item.citation()} {item.text}" for item in evidence)
+        retrieved = self.retrieve(question, limit=3)
+        evidence: list[Evidence] = []
+        context_parts: list[str] = []
+        remaining = 1800
+        for item in retrieved:
+            prefix = f"{item.citation()} "
+            available = remaining - len(prefix)
+            if available < 100:
+                break
+            context_parts.append(prefix + item.text[:available])
+            evidence.append(item)
+            remaining -= len(context_parts[-1])
+        context = "\n".join(context_parts)
         prompt = (
             "Answer only from the context. Preserve source citations. "
             f"If insufficient, say so.\n\nContext:\n{context}\n\nQuestion: {question}"
