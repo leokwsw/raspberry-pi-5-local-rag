@@ -17,6 +17,7 @@ from local_rag.generation import (
     OpenAICompatibleGenerator,
 )
 from local_rag.rag import RagService, parse_document
+from local_rag.resources import JobQueue, system_metrics
 
 
 class ChatRequest(BaseModel):
@@ -36,12 +37,29 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     else:
         generator = OpenAICompatibleGenerator(config.llamacpp_url, config.model_name)
     rag = RagService(database, generator)
+    jobs = JobQueue(database)
+    jobs.recover()
     app = FastAPI(title="Pi Local RAG", version="0.1.0")
     app.state.rag = rag
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/metrics")
+    def metrics() -> dict[str, object]:
+        return system_metrics(str(config.data_dir))
+
+    @app.get("/jobs")
+    def list_jobs() -> list[dict[str, object]]:
+        return jobs.list()
+
+    @app.get("/jobs/{job_id}")
+    def get_job(job_id: str) -> dict[str, object]:
+        job = next((item for item in jobs.list() if item["id"] == job_id), None)
+        if not job:
+            raise HTTPException(404, detail={"code": "job_not_found"})
+        return job
 
     @app.get("/documents")
     def documents() -> list[dict[str, object]]:

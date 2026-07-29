@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS benchmark_runs(
  id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL,
  started_at TEXT NOT NULL, finished_at TEXT, payload TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS jobs(
+ id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL,
+ payload TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL, error TEXT
+);
 CREATE TABLE IF NOT EXISTS documents(
  id TEXT PRIMARY KEY, name TEXT NOT NULL, media_type TEXT NOT NULL,
  created_at TEXT NOT NULL, status TEXT NOT NULL
