@@ -1,3 +1,4 @@
+import re
 from collections.abc import Sequence
 
 import httpx
@@ -5,6 +6,18 @@ import httpx
 
 class ServiceError(RuntimeError):
     pass
+
+
+_THINK_BLOCK = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.IGNORECASE | re.DOTALL)
+_THINK_END = re.compile(r"</think(?:ing)?>", re.IGNORECASE)
+
+
+def strip_thinking_output(content: str) -> str:
+    """Return only the user-facing answer if a model leaks its reasoning trace."""
+    cleaned = _THINK_BLOCK.sub("", content)
+    if _THINK_END.search(cleaned):
+        cleaned = _THINK_END.split(cleaned)[-1]
+    return cleaned.strip()
 
 
 async def post_json(url: str, payload: dict, timeout: float = 120.0) -> dict:
@@ -47,4 +60,5 @@ async def generate(base_url: str, model: str, messages: list[dict]) -> str:
         {"model": model, "messages": messages, "stream": False, "think": False},
         timeout=300.0,
     )
-    return data.get("message", {}).get("content", "").strip()
+    content = data.get("message", {}).get("content", "")
+    return strip_thinking_output(content) if isinstance(content, str) else ""

@@ -111,7 +111,7 @@ async def query(request: QueryRequest):
     messages = [
         {"role": "system",
          "content": f"你是嚴謹的本機知識庫助手。{language_rule}只可根據提供的內容回答；不足時直接說明。引用事實時使用 [1] 格式標記來源。不要顯示思考過程。"},
-        {"role": "user", "content": f"問題：{request.question}\n\n可用內容：\n{context}"},
+        {"role": "user", "content": f"問題：{request.question}\n\n可用內容：\n{context}\n\n/no_think"},
     ]
     answer = await generate(settings.ollama_base_url, settings.ollama_chat_model, messages)
     return QueryResponse(answer=answer or "模型沒有產生答案。", citations=citations)
