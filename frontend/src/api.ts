@@ -1,6 +1,7 @@
 export type DocumentItem = { document_id: string; filename: string; size: number; chunk_count: number }
 export type Citation = { index: number; filename: string; chunk_index: number; score: number; text: string }
-export type QueryResult = { answer: string; citations: Citation[] }
+export type QueryResult = { answer: string; citations: Citation[]; session_id: string; rewritten_query?: string | null }
+export type ConversationMessage = { role: 'user' | 'assistant'; content: string }
 export type Health = { status: string; services: Record<string, boolean> }
 
 const demoMode = import.meta.env.VITE_DEMO === 'true'
@@ -34,7 +35,7 @@ export const api = {
         documents: DocumentItem[];
         total_chunks: number
     }>('/api/documents'),
-    query: (body: { question: string; language: string; depth: string }) => demoMode ? Promise.resolve({
+    query: (body: { question: string; language: string; depth: string; session_id?: string; document_ids?: string[] }) => demoMode ? Promise.resolve({
         answer: '在 Raspberry Pi 5 上執行本機 RAG 服務，建議使用至少 8GB RAM，並配備高速 microSD（A2 或以上）或 SSD 以存放向量資料庫與模型檔案。[1] 啟用 64 位元作業系統、開啟 PCIe Gen 3，可獲得更好的 I/O 與整體效能。[2]',
         citations: [
             {
@@ -52,6 +53,7 @@ export const api = {
                 text: '使用 64 位元系統並開啟 PCIe Gen 3 可改善儲存 I/O。'
             },
         ],
+        session_id: body.session_id || 'demo-session',
     }) : request<QueryResult>('/api/query', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -63,4 +65,6 @@ export const api = {
         return request<DocumentItem>('/api/documents', {method: 'POST', body})
     },
     remove: (id: string) => request<void>(`/api/documents/${id}`, {method: 'DELETE'}),
+    conversation: (id: string) => request<{ session_id: string; messages: ConversationMessage[] }>(`/api/conversations/${id}`),
+    clearConversation: (id: string) => request<void>(`/api/conversations/${id}`, {method: 'DELETE'}),
 }

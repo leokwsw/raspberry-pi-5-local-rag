@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     retrieval_limit: int = 20
     rerank_limit: int = 5
+    memory_db_path: str = "/data/memory.db"
+    memory_max_messages: int = 12
+    rerank_score_threshold: float = 0.15
+    neighbor_window: int = 1
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -1,8 +1,9 @@
-import {ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useMemo, useState} from 'react'
+import {ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useState} from 'react'
 import {ArrowSquareOut, FileText, Trash, UploadSimple} from '@phosphor-icons/react'
 import {api, type Citation, type DocumentItem, type Health, type QueryResult} from './api'
 
 type Tab = 'chat' | 'documents'
+type ChatEntry = { role: 'user' | 'assistant'; content: string; citations?: Citation[] }
 
 const SUPPORTED_FILE_EXTENSIONS = [
     '.txt', '.rtf', '.csv', '.tsv', '.log', '.md', '.markdown', '.py', '.js', '.jsx', '.ts', '.tsx', '.json',
@@ -54,9 +55,21 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
     const [question, setQuestion] = useState('')
     const [language, setLanguage] = useState('zh-Hant')
     const [depth, setDepth] = useState('standard')
-    const [result, setResult] = useState<QueryResult | null>(null)
+    const [documentScope, setDocumentScope] = useState('all')
+    const [sessionId, setSessionId] = useState(() => localStorage.getItem('local-rag-session') || '')
+    const [entries, setEntries] = useState<ChatEntry[]>([])
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        if (!sessionId) return
+        api.conversation(sessionId)
+            .then(data => setEntries(data.messages))
+            .catch(() => {
+                localStorage.removeItem('local-rag-session')
+                setSessionId('')
+            })
+    }, [sessionId])
 
     async function submit(event: FormEvent) {
         event.preventDefault();
@@ -65,7 +78,22 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
         onLoadingChange(true)
         setError('')
         try {
-            setResult(await api.query({question, language, depth}))
+            const submittedQuestion = question.trim()
+            const result: QueryResult = await api.query({
+                question: submittedQuestion,
+                language,
+                depth,
+                session_id: sessionId || undefined,
+                document_ids: documentScope === 'all' ? [] : [documentScope],
+            })
+            localStorage.setItem('local-rag-session', result.session_id)
+            setSessionId(result.session_id)
+            setEntries(previous => [
+                ...previous,
+                {role: 'user', content: submittedQuestion},
+                {role: 'assistant', content: result.answer, citations: result.citations},
+            ])
+            setQuestion('')
         } catch (reason) {
             setError(reason instanceof Error ? reason.message : '查詢失敗')
         } finally {
@@ -74,10 +102,27 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
         }
     }
 
+    async function newConversation() {
+        if (loading) return
+        if (sessionId) await api.clearConversation(sessionId).catch(() => undefined)
+        localStorage.removeItem('local-rag-session')
+        setSessionId('')
+        setEntries([])
+        setError('')
+    }
+
     return <>
-        <div className="library-meta"><FileText size={18}/>{documents.length} 個文件
+        <div className="chat-toolbar"><div className="library-meta"><FileText size={18}/>{documents.length} 個文件
             · {totalChunks.toLocaleString('zh-Hant')} 個區塊 · 剛剛同步
+        </div><button type="button" className="secondary-button" disabled={loading || entries.length === 0}
+                      onClick={newConversation}>新對話</button>
         </div>
+        {entries.length > 0 && <section className="conversation" aria-label="對話記錄">{entries.map((entry, index) =>
+            <article className={`message ${entry.role}`} key={`${entry.role}-${index}`}>
+                <div className="message-label">{entry.role === 'user' ? '你' : '本機 RAG'}</div>
+                <div className="message-body">{entry.content}</div>
+                {entry.citations?.length ? <Sources citations={entry.citations}/> : null}
+            </article>)}</section>}
         <form onSubmit={submit}>
             <label htmlFor="question">向文件提問</label>
             <textarea id="question" value={question} disabled={loading}
@@ -95,15 +140,18 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
                     <option value="standard">標準</option>
                     <option value="deep">深入</option>
                 </select></div>
+                <div><label htmlFor="document-scope">文件範圍</label><select id="document-scope" value={documentScope}
+                                                                              disabled={loading}
+                                                                              onChange={event => setDocumentScope(event.target.value)}>
+                    <option value="all">所有文件</option>
+                    {documents.map(item => <option value={item.document_id} key={item.document_id}>{item.filename}</option>)}
+                </select></div>
             </div>
             <button className="primary"
                     disabled={loading || !question.trim()}>{loading && <span className="button-spinner" aria-hidden="true"/>}
                 {loading ? '正在生成答案…' : '取得答案'}</button>
         </form>
         {error && <p className="error" role="alert">{error}</p>}
-        {result && <section className="answer" aria-live="polite"><h2>根據你的文件</h2>
-            <div className="answer-body">{result.answer}</div>
-            {result.citations.length > 0 && <Sources citations={result.citations}/>}</section>}
     </>
 }
 
@@ -191,7 +239,7 @@ export function App() {
         refresh().catch(() => undefined);
         api.health().then(setHealth).catch(() => undefined)
     }, [refresh])
-    const subtitle = useMemo(() => tab === 'chat' ? '匯入純文字，然後向你的私人知識庫提問。' : '只需純文字，就能建立你的私人檢索資料庫。', [tab])
+    const subtitle = tab === 'chat' ? '匯入純文字，然後向你的私人知識庫提問。' : '只需純文字，就能建立你的私人檢索資料庫。'
     return <main>
         <header><h1>Raspberry Pi 5 Local RAG</h1><p>{subtitle}</p></header>
         <section className="panel"><Tabs tab={tab} disabled={queryLoading} onChange={setTab}/>{tab === 'chat' ?

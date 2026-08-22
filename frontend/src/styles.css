@@ -95,6 +95,74 @@ header p {
     color: #6d705f;
 }
 
+.chat-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.chat-toolbar .library-meta {
+    margin: 0;
+}
+
+.secondary-button {
+    flex: none;
+    padding: 8px 12px;
+    border: 1px solid #cfd1c1;
+    border-radius: 9px;
+    background: #fff;
+    font-size: .84rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.secondary-button:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+}
+
+.conversation {
+    display: grid;
+    max-height: 560px;
+    margin-bottom: 24px;
+    padding-right: 6px;
+    gap: 14px;
+    overflow-y: auto;
+    content-visibility: auto;
+}
+
+.message {
+    max-width: 92%;
+    padding: 13px 15px;
+    border: 1px solid #dfe3b8;
+    border-radius: 12px;
+    background: #fbfce9;
+}
+
+.message.user {
+    justify-self: end;
+    border-color: #dcdecf;
+    background: #f1f2e8;
+}
+
+.message-label {
+    margin-bottom: 5px;
+    color: #6d705f;
+    font-size: .76rem;
+    font-weight: 800;
+}
+
+.message-body {
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+.message .sources h3 {
+    margin-top: 14px;
+}
+
 label {
     display: block;
     margin: 0 0 8px;
@@ -135,7 +203,7 @@ textarea:disabled, select:disabled {
 
 .fields {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 18px;
     margin-top: 16px;
 }
@@ -380,6 +448,14 @@ textarea:disabled, select:disabled {
     .library-meta {
         margin-bottom: 24px;
         font-size: .88rem;
+    }
+
+    .chat-toolbar .library-meta {
+        margin: 0;
+    }
+
+    .message {
+        max-width: 100%;
     }
 
     .document-row {

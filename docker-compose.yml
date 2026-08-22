@@ -43,6 +43,8 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
+    volumes:
+      - backend-data:/data
     depends_on:
       qdrant:
         condition: service_healthy
@@ -62,3 +64,4 @@ services:
 volumes:
   qdrant-data:
   reranker-models:
+  backend-data:

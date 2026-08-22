@@ -8,12 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .clients import ServiceError, chunk, embed, generate, rerank
 from .config import get_settings
-from .schemas import Citation, DocumentList, DocumentSummary, QueryRequest, QueryResponse
+from .memory import ConversationMemory
+from .retrieval import bm25_search, needs_query_rewrite, reciprocal_rank_fusion
+from .schemas import (Citation, ConversationMessage, ConversationResponse, DocumentList, DocumentSummary,
+                      QueryRequest, QueryResponse)
 from .store import VectorStore
 from .text_files import decode_text
 
 settings = get_settings()
 store = VectorStore(settings.qdrant_url, settings.qdrant_collection)
+memory = ConversationMemory(settings.memory_db_path, settings.memory_max_messages)
 
 
 @asynccontextmanager
@@ -87,31 +91,90 @@ async def delete_document(document_id: str):
     await store.delete_document(document_id)
 
 
+@app.get("/api/conversations/{session_id}", response_model=ConversationResponse)
+async def get_conversation(session_id: str):
+    messages = await asyncio.to_thread(memory.recent, session_id)
+    return ConversationResponse(session_id=session_id, messages=[ConversationMessage(**item) for item in messages])
+
+
+@app.delete("/api/conversations/{session_id}", status_code=204)
+async def clear_conversation(session_id: str):
+    await asyncio.to_thread(memory.clear, session_id)
+
+
+async def rewrite_question(question: str, history: list[dict]) -> str:
+    if not needs_query_rewrite(question, bool(history)):
+        return question
+    transcript = "\n".join(f"{item['role']}: {item['content']}" for item in history[-4:])
+    rewritten = await generate(settings.ollama_base_url, settings.ollama_chat_model, [
+        {"role": "system", "content": "把追問改寫成可獨立檢索的問題。只輸出改寫後問題，不回答。"},
+        {"role": "user", "content": f"對話：\n{transcript}\n\n追問：{question}\n\n/no_think"},
+    ])
+    return rewritten.strip() or question
+
+
+async def build_context(citations: list[Citation], lookup: dict[str, dict], ranked: list[dict]) -> str:
+    neighbor_groups = await asyncio.gather(*[
+        store.neighbors(
+            str(lookup[item["id"]]["document_id"]),
+            int(lookup[item["id"]]["chunk_index"]),
+            settings.neighbor_window,
+        )
+        for item in ranked if item["id"] in lookup
+    ])
+    sections: list[str] = []
+    for citation, neighbors in zip(citations, neighbor_groups, strict=True):
+        unique_texts = list(dict.fromkeys(str(item.get("text", "")) for item in neighbors if item.get("text")))
+        text = "\n\n".join(unique_texts) or citation.text
+        sections.append(f"[{citation.index}] {citation.filename}（命中區塊 {citation.chunk_index}，含相鄰內容）\n{text}")
+    return "\n\n".join(sections)
+
+
 @app.post("/api/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
-    vector = (await embed(settings.ollama_base_url, settings.ollama_embed_model, [request.question]))[0]
+    session_id = request.session_id or memory.new_session_id()
+    history = await asyncio.to_thread(memory.recent, session_id)
+    retrieval_query = await rewrite_question(request.question, history)
+    vector = (await embed(settings.ollama_base_url, settings.ollama_embed_model, [retrieval_query]))[0]
     multiplier = {"quick": 0.5, "standard": 1.0, "deep": 1.5}[request.depth]
-    candidates = await store.search(vector, max(5, int(settings.retrieval_limit * multiplier)))
+    candidate_limit = max(5, int(settings.retrieval_limit * multiplier))
+    dense_candidates, all_chunks = await asyncio.gather(
+        store.search(vector, candidate_limit, request.document_ids),
+        store.all_chunks(request.document_ids),
+    )
+    lexical_candidates = bm25_search(retrieval_query, all_chunks, candidate_limit)
+    candidates = reciprocal_rank_fusion([dense_candidates, lexical_candidates], candidate_limit)
     if not candidates:
-        return QueryResponse(answer="知識庫目前沒有可供查詢的內容，請先加入純文字文件。", citations=[])
+        answer = "知識庫目前沒有可供查詢的內容，請先加入純文字文件。"
+        await asyncio.to_thread(memory.append_exchange, session_id, request.question, answer)
+        return QueryResponse(answer=answer, citations=[], session_id=session_id, rewritten_query=retrieval_query)
     ranked = await rerank(
         settings.reranker_url,
-        request.question,
+        retrieval_query,
         [{"id": item["id"], "text": item["text"]} for item in candidates],
         max(2, int(settings.rerank_limit * multiplier)),
     )
     lookup = {item["id"]: item for item in candidates}
+    ranked = [item for item in ranked if item["id"] in lookup]
+    if not ranked or float(ranked[0]["score"]) < settings.rerank_score_threshold:
+        answer = "文件中沒有足夠可靠的資料可以回答這個問題。"
+        await asyncio.to_thread(memory.append_exchange, session_id, request.question, answer)
+        return QueryResponse(answer=answer, citations=[], session_id=session_id, rewritten_query=retrieval_query)
     citations = [
         Citation(index=index, filename=lookup[item["id"]]["filename"],
                  chunk_index=int(lookup[item["id"]]["chunk_index"]), score=float(item["score"]), text=item["text"])
-        for index, item in enumerate(ranked, start=1) if item["id"] in lookup
+        for index, item in enumerate(ranked, start=1)
     ]
-    context = "\n\n".join(f"[{item.index}] {item.filename}（區塊 {item.chunk_index}）\n{item.text}" for item in citations)
+    context = await build_context(citations, lookup, ranked)
     language_rule = "請一律使用繁體中文回答。" if request.language == "zh-Hant" else "請跟隨使用者問題的語言回答。"
     messages = [
         {"role": "system",
-         "content": f"你是嚴謹的本機知識庫助手。{language_rule}只可根據提供的內容回答；不足時直接說明。引用事實時使用 [1] 格式標記來源。不要顯示思考過程。"},
+         "content": f"你是嚴謹的本機知識庫助手。{language_rule}只可根據本次提供的文件內容回答；不足時直接說明。引用事實時使用 [1] 格式標記來源。對話歷史只用於理解追問，不可當作事實來源。不要顯示思考過程。"},
+        *history[-6:],
         {"role": "user", "content": f"問題：{request.question}\n\n可用內容：\n{context}\n\n/no_think"},
     ]
     answer = await generate(settings.ollama_base_url, settings.ollama_chat_model, messages)
-    return QueryResponse(answer=answer or "模型沒有產生答案。", citations=citations)
+    answer = answer or "模型沒有產生答案。"
+    await asyncio.to_thread(memory.append_exchange, session_id, request.question, answer)
+    return QueryResponse(answer=answer, citations=citations, session_id=session_id,
+                         rewritten_query=retrieval_query if retrieval_query != request.question else None)

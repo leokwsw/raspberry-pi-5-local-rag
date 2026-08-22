@@ -35,14 +35,61 @@ class VectorStore:
         ]
         await self.client.upsert(self.collection, points=points, wait=True)
 
-    async def search(self, vector: list[float], limit: int) -> list[dict]:
+    async def search(self, vector: list[float], limit: int, document_ids: list[str] | None = None) -> list[dict]:
         if not await self.client.collection_exists(self.collection):
             return []
-        result = await self.client.query_points(self.collection, query=vector, limit=limit, with_payload=True)
+        query_filter = None
+        if document_ids:
+            query_filter = models.Filter(must=[
+                models.FieldCondition(key="document_id", match=models.MatchAny(any=document_ids)),
+            ])
+        result = await self.client.query_points(
+            self.collection, query=vector, query_filter=query_filter, limit=limit, with_payload=True,
+        )
         return [
             {"id": str(point.id), "score": float(point.score), **(point.payload or {})}
             for point in result.points
         ]
+
+    async def all_chunks(self, document_ids: list[str] | None = None) -> list[dict]:
+        if not await self.client.collection_exists(self.collection):
+            return []
+        chunks: list[dict] = []
+        offset = None
+        while True:
+            scroll_filter = None
+            if document_ids:
+                scroll_filter = models.Filter(must=[
+                    models.FieldCondition(key="document_id", match=models.MatchAny(any=document_ids)),
+                ])
+            points, offset = await self.client.scroll(
+                self.collection, limit=256, offset=offset, scroll_filter=scroll_filter,
+                with_payload=True, with_vectors=False,
+            )
+            chunks.extend({"id": str(point.id), **(point.payload or {})} for point in points)
+            if offset is None:
+                return chunks
+
+    async def neighbors(self, document_id: str, chunk_index: int, window: int) -> list[dict]:
+        if not await self.client.collection_exists(self.collection) or window <= 0:
+            return []
+        points, _ = await self.client.scroll(
+            self.collection,
+            limit=window * 2 + 1,
+            with_payload=True,
+            with_vectors=False,
+            scroll_filter=models.Filter(must=[
+                models.FieldCondition(key="document_id", match=models.MatchValue(value=document_id)),
+                models.FieldCondition(
+                    key="chunk_index",
+                    range=models.Range(gte=max(0, chunk_index - window), lte=chunk_index + window),
+                ),
+            ]),
+        )
+        return sorted(
+            [{"id": str(point.id), **(point.payload or {})} for point in points],
+            key=lambda item: int(item.get("chunk_index", 0)),
+        )
 
     async def list_documents(self) -> list[dict]:
         if not await self.client.collection_exists(self.collection):
