@@ -8,3 +8,4 @@ frontend/dist/
 qdrant_storage/
 .DS_Store
 .idea/
+sync-to-pi5.sh
