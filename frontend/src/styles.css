@@ -6,6 +6,8 @@
     font-synthesis: none;
 }
 
+:root[data-theme="dark"] { color-scheme: dark; }
+
 * {
     box-sizing: border-box;
 }
@@ -44,6 +46,14 @@ main.graph-page {
 header {
     margin: 0 26px 24px;
 }
+
+.app-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.brand-copy { min-width: 0; }
+.compatibility-mark { display: inline-block; margin-bottom: 7px; color: #8e1538; font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.theme-control { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; margin: 5px 0 0; padding: 5px 8px; border: 1px solid #d6d8c8; border-radius: 10px; color: #6d705f; background: #fffef8; }
+.theme-control select { width: auto; height: 30px; padding: 0 25px 0 2px; border: 0; border-radius: 5px; background: transparent; font-size: .75rem; font-weight: 700; }
+.theme-control select:focus { outline: 2px solid rgba(197, 26, 74, .28); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 h1 {
     margin: 0 0 8px;
@@ -173,7 +183,7 @@ header p {
 }
 
 .connection-heading > div { justify-content: flex-start; }
-.connection-details { display: grid; grid-template-columns: minmax(260px, 1fr) 150px 150px; gap: 10px; margin-top: 12px; }
+.connection-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .connection-details > div { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 8px; padding: 11px 12px; border: 1px solid #e0e2d3; border-radius: 9px; background: #fff; }
 .connection-details > div:first-child { grid-template-columns: 1fr; }
 .connection-details span, .connection-details small { color: #777b69; font-size: .69rem; }
@@ -199,6 +209,8 @@ header p {
 }
 
 .runtime-icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 9px; place-items: center; color: #596100; background: #eff5a5; }
+.ollama-icon { display: block; width: 18px; height: 22px; background: currentColor; mask: url('/ollama-logo.svg') center / contain no-repeat; }
+.rag-model-heading > .ollama-icon { flex: 0 0 auto; width: 19px; height: 24px; color: #000; }
 .runtime-card > div { display: grid; min-width: 0; gap: 2px; }
 .runtime-card small, .runtime-card span { color: #777b69; font-size: .67rem; }
 .runtime-card strong { overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -679,6 +691,70 @@ textarea:disabled, select:disabled {
     font-size: .85rem;
 }
 
+.app-footer > p { margin: -7px 0 0; padding: 0 0 15px; color: #8a8d7b; text-align: center; font-size: .66rem; }
+
+/* Raspberry accent palette */
+.workflow-tabs .tab[aria-selected="true"] > span, .section-icon, .primary-button.compact, .primary,
+.graph-title-icon, .graph-toolbar button.active, .graph-limit-notice button {
+    border-color: #c51a4a;
+    color: #fff;
+    background: #c51a4a;
+}
+.primary:hover:not(:disabled) { background: #a9143e; }
+.workflow-dropzone.dragging, .dropzone.dragging, .rag-mode-switch button[aria-checked="true"] { border-color: #c51a4a; background: #fbe8ee; }
+.rag-mode-switch button[aria-checked="true"] { box-shadow: inset 3px 0 #c51a4a; }
+.workflow-message, .workflow-badge.ready, .predicate-pill, .range-label output, .info-card { color: #8e1538; background: #fbe8ee; }
+.runtime-icon, .rag-model-heading, .graph-limit-notice, .selected-node-card button { color: #a21640; }
+.runtime-icon { background: #f8dce5; }
+.triple-config textarea:focus, .triple-config input:focus, .rag-model-bar select:focus { border-color: #c51a4a; box-shadow: 0 0 0 3px rgba(197, 26, 74, .15); }
+.range-parameter input[type="range"] { background: linear-gradient(to right, #c51a4a var(--range-progress), #e5e7da var(--range-progress)); }
+.range-parameter input[type="range"]::-webkit-slider-thumb { background: #c51a4a; box-shadow: 0 0 0 1px #8e1538; }
+.range-parameter input[type="range"]:focus-visible, textarea:focus, select:focus, button:focus-visible, .dropzone:focus-within { outline-color: rgba(197, 26, 74, .3); border-color: #c51a4a; }
+.graph-toolbar button:hover, .export-menu summary:hover { border-color: #d76b89; background: #fbe8ee; }
+.database-switch input:checked + .switch-track { background: #c51a4a; }
+.workbench-edge.selected line { stroke: #c51a4a; }
+.workbench-node circle { fill: #c51a4a; stroke: #76102d; }
+.workbench-node:hover circle, .workbench-node.selected circle, .workbench-node.matched circle { filter: drop-shadow(0 0 7px rgba(197, 26, 74, .55)); stroke: #570a20; }
+
+/* Both explicit and system-resolved dark mode use this single rule set. */
+:root[data-theme="dark"], :root[data-theme="dark"] body { color: #f4edf0; background: #121014; }
+:root[data-theme="dark"] header p, :root[data-theme="dark"] .library-meta, :root[data-theme="dark"] .section-heading p,
+:root[data-theme="dark"] .table-heading p, :root[data-theme="dark"] .data-table td, :root[data-theme="dark"] .source p,
+:root[data-theme="dark"] .chunk, :root[data-theme="dark"] .graph-stats, :root[data-theme="dark"] .graph-workbench-heading p { color: #b9afb3; }
+:root[data-theme="dark"] .panel, :root[data-theme="dark"] .triple-config, :root[data-theme="dark"] .graph-toolbar,
+:root[data-theme="dark"] .theme-control, :root[data-theme="dark"] .graph-zoom-controls button { border-color: #41363b; background: #1c181b; box-shadow: none; }
+:root[data-theme="dark"] .triple-config > summary { color: #f4edf0; background: #292227; }
+:root[data-theme="dark"] .tabs, :root[data-theme="dark"] .subtabs, :root[data-theme="dark"] .data-table th { background: #292227; }
+:root[data-theme="dark"] .tab, :root[data-theme="dark"] .subtabs button { color: #b9afb3; }
+:root[data-theme="dark"] .tab[aria-selected="true"], :root[data-theme="dark"] .subtabs button[aria-selected="true"] { color: #fff; background: #3a3035; box-shadow: none; }
+:root[data-theme="dark"] .connection-card, :root[data-theme="dark"] .runtime-card, :root[data-theme="dark"] .workflow-dropzone,
+:root[data-theme="dark"] .process-summary, :root[data-theme="dark"] .rag-mode-switch button, :root[data-theme="dark"] .rag-model-bar,
+:root[data-theme="dark"] .graph-workbench, :root[data-theme="dark"] .graph-stage { border-color: #41363b; color: #ded5d9; background: #211c1f; }
+:root[data-theme="dark"] .connection-details > div, :root[data-theme="dark"] .quiet-button, :root[data-theme="dark"] .secondary-button,
+:root[data-theme="dark"] .row-actions button, :root[data-theme="dark"] .row-actions a, :root[data-theme="dark"] .source-list,
+:root[data-theme="dark"] .document-list, :root[data-theme="dark"] .advanced-parameters, :root[data-theme="dark"] .graph-search,
+:root[data-theme="dark"] .primary-actions button, :root[data-theme="dark"] .export-menu > div { border-color: #493d43; color: #eee6e9; background: #272125; }
+:root[data-theme="dark"] textarea, :root[data-theme="dark"] select, :root[data-theme="dark"] .triple-config textarea,
+:root[data-theme="dark"] .triple-config input, :root[data-theme="dark"] .table-filters input, :root[data-theme="dark"] .rag-model-bar select { border-color: #51434a; color: #f4edf0; background: #171417; }
+:root[data-theme="dark"] .file-cell, :root[data-theme="dark"] .workflow-dropzone strong, :root[data-theme="dark"] .info-card strong,
+:root[data-theme="dark"] .graph-empty strong, :root[data-theme="dark"] .rag-model-heading label,
+:root[data-theme="dark"] .advanced-parameters summary { color: #f4edf0; }
+:root[data-theme="dark"] .workflow-dropzone.dragging, :root[data-theme="dark"] .dropzone.dragging,
+:root[data-theme="dark"] .rag-mode-switch button[aria-checked="true"], :root[data-theme="dark"] .workflow-message,
+:root[data-theme="dark"] .workflow-badge.ready, :root[data-theme="dark"] .predicate-pill,
+:root[data-theme="dark"] .range-label output, :root[data-theme="dark"] .info-card { color: #ffb4c8; background: #481326; }
+:root[data-theme="dark"] .data-table td, :root[data-theme="dark"] .source + .source,
+:root[data-theme="dark"] .document-row + .document-row, :root[data-theme="dark"] .advanced-parameters[open] summary,
+:root[data-theme="dark"] .status { border-color: #41363b; }
+:root[data-theme="dark"] .data-table tbody tr:hover { background: #2b2227; }
+:root[data-theme="dark"] .message { border-color: #56303c; background: #2b2025; }
+:root[data-theme="dark"] .message.user { border-color: #41363b; background: #252024; }
+:root[data-theme="dark"] .graph-workbench:fullscreen { background: #121014; }
+:root[data-theme="dark"] .workbench-edge line { stroke: #675b61; }
+:root[data-theme="dark"] .workbench-edge text, :root[data-theme="dark"] .workbench-node text { fill: #e8dfe3; stroke: #211c1f; }
+:root[data-theme="dark"] .selected-node-card { border-color: #633346; background: rgba(39, 33, 37, .95); }
+:root[data-theme="dark"] .rag-model-heading > .ollama-icon { color: #fff; }
+
 .status-dot {
     width: 8px;
     height: 8px;
@@ -1152,6 +1228,9 @@ textarea:disabled, select:disabled {
         margin: 0 0 22px;
     }
 
+    .app-header { align-items: stretch; flex-direction: column; gap: 14px; }
+    .theme-control { align-self: flex-start; margin: 0; }
+
     h1 {
         font-size: 2.25rem;
     }
@@ -1271,6 +1350,23 @@ textarea:disabled, select:disabled {
     .document-row > :nth-child(3), .document-row > :nth-child(4) {
         display: none;
     }
+}
+
+/* Keep the raspberry accent authoritative over component-local legacy colours. */
+:root .workflow-tabs .tab[aria-selected="true"] > span, :root .section-icon, :root .primary-button.compact,
+:root .primary, :root .graph-title-icon, :root .graph-toolbar button.active, :root .graph-limit-notice button {
+    border-color: #c51a4a;
+    color: #fff;
+    background: #c51a4a;
+}
+:root .primary:hover:not(:disabled) { background: #a9143e; }
+:root .graph-toolbar button:hover, :root .export-menu summary:hover { border-color: #d76b89; background: #fbe8ee; }
+:root .database-switch input:checked + .switch-track { background: #c51a4a; }
+:root .workbench-edge.selected line { stroke: #c51a4a; }
+:root .workbench-node circle { fill: #c51a4a; stroke: #76102d; }
+:root .workbench-node:hover circle, :root .workbench-node.selected circle, :root .workbench-node.matched circle {
+    filter: drop-shadow(0 0 7px rgba(197, 26, 74, .55));
+    stroke: #570a20;
 }
 
 @media (prefers-reduced-motion: reduce) {

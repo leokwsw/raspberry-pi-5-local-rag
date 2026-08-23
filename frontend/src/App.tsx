@@ -1,11 +1,24 @@
 import {FormEvent, useCallback, useEffect, useMemo, useState} from 'react'
-import {ArrowSquareOut, Cpu, FileText} from '@phosphor-icons/react'
+import {ArrowSquareOut, Desktop, FileText, Moon, Sun} from '@phosphor-icons/react'
 import {api, type Citation, type DocumentItem, type Health, type KnowledgeGraph, type OllamaModel, type QueryResult, type SystemOverview} from './api'
 import {KnowledgeGraphPanel} from './KnowledgeGraphPanel'
 import {ProcessPanel, TriplesPanel, UploadPanel} from './WorkflowPanels'
 
 type Tab = 'upload' | 'process' | 'triples' | 'graph' | 'rag'
+type Theme = 'system' | 'light' | 'dark'
 type ChatEntry = { role: 'user' | 'assistant'; content: string; citations?: Citation[] }
+
+function ThemeControl({theme, onChange}: {theme: Theme; onChange: (theme: Theme) => void}) {
+    const Icon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Desktop
+    return <label className="theme-control" title="外觀模式">
+        <Icon size={18}/><span className="visually-hidden">外觀模式</span>
+        <select aria-label="外觀模式" value={theme} onChange={event => onChange(event.target.value as Theme)}>
+            <option value="system">跟隨系統</option>
+            <option value="light">淺色</option>
+            <option value="dark">深色</option>
+        </select>
+    </label>
+}
 
 function Tabs({tab, disabled, onChange}: { tab: Tab; disabled: boolean; onChange: (tab: Tab) => void }) {
     return <div className="tabs workflow-tabs" role="tablist" aria-label="知識庫工作流程">
@@ -20,9 +33,9 @@ function Tabs({tab, disabled, onChange}: { tab: Tab; disabled: boolean; onChange
 
 function Status({health}: { health: Health | null }) {
     const okay = health?.services && ['ollama', 'qdrant', 'arangodb', 'reranker', 'chunking'].every(key => health.services[key])
-    return <footer className="status"><span
+    return <footer className="app-footer"><div className="status"><span
         className={okay ? 'status-dot online' : 'status-dot'}/>{okay ? 'Ollama · Qdrant · ArangoDB · 重排序服務 · 分段服務均正常' : '正在檢查本機服務…'}
-    </footer>
+    </div><p>Raspberry Pi is a trademark of Raspberry Pi Ltd.</p></footer>
 }
 
 function Sources({citations}: { citations: Citation[] }) {
@@ -148,7 +161,7 @@ function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChang
             <strong>Pure RAG</strong><span>只以 Qdrant 文件內容檢索</span></button><button role="radio" aria-checked={searchMode === 'graph'} onClick={() => setSearchMode('graph')}>
             <strong>Graph Search</strong><span>結合 ArangoDB 實體關係</span></button></div>
         <div className="rag-model-bar">
-            <div className="rag-model-heading"><Cpu size={19}/><div><label htmlFor="rag-chat-model">回答模型</label><span>從 Ollama 已安裝的生成模型選擇</span></div></div>
+            <div className="rag-model-heading"><span className="ollama-icon" aria-hidden="true"/><div><label htmlFor="rag-chat-model">回答模型</label><span>從 Ollama 已安裝的生成模型選擇</span></div></div>
             <select id="rag-chat-model" value={selectedModel} disabled={loading || chatModels.length === 0}
                     onChange={event => {
                         setSelectedModel(event.target.value)
@@ -214,6 +227,10 @@ function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChang
 
 export function App() {
     const [tab, setTab] = useState<Tab>('upload')
+    const [theme, setTheme] = useState<Theme>(() => {
+        const savedTheme = localStorage.getItem('local-rag-theme')
+        return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'system'
+    })
     const [queryLoading, setQueryLoading] = useState(false)
     const [documents, setDocuments] = useState<DocumentItem[]>([])
     const [totalChunks, setTotalChunks] = useState(0)
@@ -223,6 +240,20 @@ export function App() {
     const [graph, setGraph] = useState<KnowledgeGraph | null>(null)
     const [graphLoading, setGraphLoading] = useState(false)
     const [graphError, setGraphError] = useState('')
+    useEffect(() => {
+        const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
+        const applyTheme = () => {
+            document.documentElement.dataset.theme = theme === 'system' && systemTheme.matches ? 'dark' :
+                theme === 'system' ? 'light' : theme
+        }
+        applyTheme()
+        if (theme === 'system') {
+            localStorage.removeItem('local-rag-theme')
+            systemTheme.addEventListener('change', applyTheme)
+            return () => systemTheme.removeEventListener('change', applyTheme)
+        }
+        localStorage.setItem('local-rag-theme', theme)
+    }, [theme])
     const refresh = useCallback(async () => {
         const [data, systemOverview] = await Promise.all([api.documents(), api.overview()]);
         setDocuments(data.documents);
@@ -248,7 +279,8 @@ export function App() {
         rag: '使用純向量 RAG，或加入知識圖譜關係搜尋。',
     }
     return <main className="graph-page">
-        <header><h1>Raspberry Pi 5 Local RAG</h1><p>{subtitles[tab]}</p></header>
+        <header className="app-header"><div className="brand-copy"><span className="compatibility-mark">For use with Raspberry Pi 5</span>
+            <h1>Local RAG</h1><p>{subtitles[tab]}</p></div><ThemeControl theme={theme} onChange={setTheme}/></header>
         <section className="panel"><Tabs tab={tab} disabled={queryLoading} onChange={setTab}/>
             {tab === 'upload' ? <UploadPanel documents={documents} overview={overview} refresh={refresh}/> :
                 tab === 'process' ? <ProcessPanel documents={documents} overview={overview} models={models} refresh={refresh}/> :

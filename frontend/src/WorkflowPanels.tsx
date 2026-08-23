@@ -147,7 +147,7 @@ export function ProcessPanel({documents, overview, models, refresh}: {
 
     return <section className="workflow-section"><div className="section-heading"><div className="section-icon"><ArrowClockwise size={19}/></div><div>
         <h2>處理文件</h2><p>把昂貴的模型工作拆開執行，方便控制 Raspberry Pi 的記憶體及處理時間。</p></div></div>
-        <div className="runtime-overview"><div className="runtime-card selectable"><span className="runtime-icon"><Cpu size={18}/></span><div><label htmlFor="triple-model">三元組模型</label>
+        <div className="runtime-overview"><div className="runtime-card selectable"><span className="runtime-icon"><span className="ollama-icon" aria-hidden="true"/></span><div><label htmlFor="triple-model">三元組模型</label>
             <select id="triple-model" value={tripleConfig.chat_model} disabled={busy || !chatModels.length}
                 onChange={event => setTripleConfig(previous => ({...previous, chat_model: event.target.value}))}>
                 {!chatModels.length && <option value="">正在讀取 Ollama 模型…</option>}
