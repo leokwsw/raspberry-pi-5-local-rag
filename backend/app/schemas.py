@@ -11,6 +11,10 @@ class QueryRequest(BaseModel):
     document_ids: list[str] = Field(default_factory=list, max_length=50)
     search_mode: Literal["pure", "graph"] = "pure"
     chat_model: str | None = Field(default=None, min_length=1, max_length=200)
+    top_k: int = Field(default=40, ge=1, le=50)
+    knn_neighbors: int = Field(default=4096, ge=256, le=8192)
+    fanout: int = Field(default=400, ge=50, le=1000)
+    number_of_hops: int = Field(default=2, ge=1, le=4)
 
 
 class Citation(BaseModel):

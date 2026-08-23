@@ -283,12 +283,12 @@ async def rewrite_question(question: str, history: list[dict], chat_model: str) 
     return rewritten.strip() or question
 
 
-async def build_context(citations: list[Citation], lookup: dict[str, dict], ranked: list[dict]) -> str:
+async def build_context(citations: list[Citation], lookup: dict[str, dict], ranked: list[dict], neighbor_window: int) -> str:
     neighbor_groups = await asyncio.gather(*[
         store.neighbors(
             str(lookup[item["id"]]["document_id"]),
             int(lookup[item["id"]]["chunk_index"]),
-            settings.neighbor_window,
+            neighbor_window,
         )
         for item in ranked if item["id"] in lookup
     ])
@@ -298,6 +298,36 @@ async def build_context(citations: list[Citation], lookup: dict[str, dict], rank
         text = "\n\n".join(unique_texts) or citation.text
         sections.append(f"[{citation.index}] {citation.filename}（命中區塊 {citation.chunk_index}，含相鄰內容）\n{text}")
     return "\n\n".join(sections)
+
+
+def expand_graph_edges(graph: dict, terms: set[str], number_of_hops: int, fanout: int) -> list[dict]:
+    labels = {node["id"]: node["label"] for node in graph["nodes"]}
+    seed_nodes = {node_id for node_id, label in labels.items()
+                  if any(term in str(label).casefold() for term in terms)}
+    if not seed_nodes:
+        seed_nodes = {node_id for edge in graph["edges"] if any(
+            term in f'{labels.get(edge["source"], "")} {edge["predicate"]} '
+                    f'{labels.get(edge["target"], "")}'.casefold() for term in terms
+        ) for node_id in (edge["source"], edge["target"])}
+    frontier = seed_nodes
+    visited_nodes = set(seed_nodes)
+    selected_edges: list[dict] = []
+    selected_ids: set[str] = set()
+    for _ in range(number_of_hops):
+        if not frontier:
+            break
+        hop_edges = [edge for edge in graph["edges"]
+                     if edge["source"] in frontier or edge["target"] in frontier][:fanout]
+        next_frontier: set[str] = set()
+        for edge in hop_edges:
+            if edge["id"] not in selected_ids:
+                selected_edges.append(edge)
+                selected_ids.add(edge["id"])
+            next_frontier.update((edge["source"], edge["target"]))
+        next_frontier -= visited_nodes
+        visited_nodes.update(next_frontier)
+        frontier = next_frontier
+    return selected_edges
 
 
 @app.post("/api/query", response_model=QueryResponse)
@@ -315,8 +345,7 @@ async def query(request: QueryRequest):
     history = await asyncio.to_thread(memory.recent, session_id)
     retrieval_query = await rewrite_question(request.question, history, chat_model)
     vector = (await embed(settings.ollama_base_url, settings.ollama_embed_model, [retrieval_query]))[0]
-    multiplier = {"quick": 0.5, "standard": 1.0, "deep": 1.5}[request.depth]
-    candidate_limit = max(5, int(settings.retrieval_limit * multiplier))
+    candidate_limit = request.top_k if request.search_mode == "pure" else request.knn_neighbors
     dense_candidates, all_chunks = await asyncio.gather(
         store.search(vector, candidate_limit, request.document_ids),
         store.all_chunks(request.document_ids),
@@ -331,7 +360,7 @@ async def query(request: QueryRequest):
         settings.reranker_url,
         retrieval_query,
         [{"id": item["id"], "text": item["text"]} for item in candidates],
-        max(2, int(settings.rerank_limit * multiplier)),
+        request.top_k,
     )
     lookup = {item["id"]: item for item in candidates}
     ranked = [item for item in ranked if item["id"] in lookup]
@@ -344,15 +373,13 @@ async def query(request: QueryRequest):
                  chunk_index=int(lookup[item["id"]]["chunk_index"]), score=float(item["score"]), text=item["text"])
         for index, item in enumerate(ranked, start=1)
     ]
-    context = await build_context(citations, lookup, ranked)
+    neighbor_window = max(0, settings.neighbor_window + {"quick": -1, "standard": 0, "deep": 1}[request.depth])
+    context = await build_context(citations, lookup, ranked, neighbor_window)
     if request.search_mode == "graph":
         graph = await asyncio.to_thread(graph_store.graph)
         terms = {term.casefold() for term in retrieval_query.split() if len(term) > 1}
         labels = {node["id"]: node["label"] for node in graph["nodes"]}
-        matching_edges = [edge for edge in graph["edges"] if any(
-            term in f'{labels.get(edge["source"], "")} {edge["predicate"]} {labels.get(edge["target"], "")}'.casefold()
-            for term in terms
-        )][:20]
+        matching_edges = expand_graph_edges(graph, terms, request.number_of_hops, request.fanout)
         if matching_edges:
             graph_context = "\n".join(
                 f'- {labels.get(edge["source"], edge["source"])} — {edge["predicate"]} → '

@@ -37,6 +37,26 @@ function Sources({citations}: { citations: Citation[] }) {
     </section>
 }
 
+function RangeParameter({id, label, value, min, max, step = 1, disabled, onChange}: {
+    id: string;
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    step?: number;
+    disabled: boolean;
+    onChange: (value: number) => void;
+}) {
+    const progress = ((value - min) / (max - min)) * 100
+    return <div className="range-parameter">
+        <div className="range-label"><label htmlFor={id}>{label}</label><output htmlFor={id}>{value.toLocaleString('en-US')}</output></div>
+        <input id={id} type="range" value={value} min={min} max={max} step={step} disabled={disabled}
+               style={{'--range-progress': `${progress}%`} as React.CSSProperties}
+               onChange={event => onChange(Number(event.target.value))}/>
+        <div className="range-bounds"><span>{min.toLocaleString('en-US')}</span><span>{max.toLocaleString('en-US')}</span></div>
+    </div>
+}
+
 function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChange}: {
     documents: DocumentItem[];
     totalChunks: number;
@@ -49,6 +69,10 @@ function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChang
     const [depth, setDepth] = useState('standard')
     const [searchMode, setSearchMode] = useState<'pure' | 'graph'>('pure')
     const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('local-rag-search-model') || '')
+    const [topK, setTopK] = useState(40)
+    const [knnNeighbors, setKnnNeighbors] = useState(4096)
+    const [fanout, setFanout] = useState(400)
+    const [numberOfHops, setNumberOfHops] = useState(2)
     const [documentScope, setDocumentScope] = useState('all')
     const [sessionId, setSessionId] = useState(() => localStorage.getItem('local-rag-session') || '')
     const [entries, setEntries] = useState<ChatEntry[]>([])
@@ -87,6 +111,10 @@ function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChang
                 depth,
                 search_mode: searchMode,
                 chat_model: selectedModel || undefined,
+                top_k: topK,
+                knn_neighbors: searchMode === 'graph' ? knnNeighbors : undefined,
+                fanout: searchMode === 'graph' ? fanout : undefined,
+                number_of_hops: searchMode === 'graph' ? numberOfHops : undefined,
                 session_id: sessionId || undefined,
                 document_ids: documentScope === 'all' ? [] : [documentScope],
             })
@@ -130,6 +158,17 @@ function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChang
                     <option key={model.name} value={model.name}>{model.name} · {(model.size / 1_000_000_000).toFixed(1)} GB</option>)}
             </select>
         </div>
+        <details className="advanced-parameters" open>
+            <summary><span>進階參數</span><small>{searchMode === 'pure' ? 'Pure RAG 檢索設定' : 'Graph Search 檢索設定'}</small></summary>
+            <div className={`range-parameters ${searchMode === 'graph' ? 'graph-parameters' : ''}`}>
+                {searchMode === 'graph' && <>
+                    <RangeParameter id="knn-neighbors" label="KNN Neighbors" value={knnNeighbors} min={256} max={8192} step={256} disabled={loading} onChange={setKnnNeighbors}/>
+                    <RangeParameter id="fanout" label="Fanout" value={fanout} min={50} max={1000} step={50} disabled={loading} onChange={setFanout}/>
+                    <RangeParameter id="number-of-hops" label="Number of Hops" value={numberOfHops} min={1} max={4} disabled={loading} onChange={setNumberOfHops}/>
+                </>}
+                <RangeParameter id="top-k-results" label="Top K Results" value={topK} min={1} max={50} disabled={loading} onChange={setTopK}/>
+            </div>
+        </details>
         <div className="chat-toolbar"><div className="library-meta"><FileText size={18}/>{documents.length} 個文件
             · {totalChunks.toLocaleString('zh-Hant')} 個區塊 · 剛剛同步
         </div><button type="button" className="secondary-button" disabled={loading || entries.length === 0}
