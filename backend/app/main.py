@@ -104,15 +104,16 @@ async def list_documents():
     return DocumentList(documents=items, total_chunks=sum(item.chunk_count for item in items))
 
 
-async def document_chunks(document_id: str) -> tuple[dict, list[dict]]:
+async def document_chunks(document_id: str, chunk_size: int | None = None,
+                          chunk_overlap: int | None = None) -> tuple[dict, list[dict]]:
     try:
         item = await asyncio.to_thread(documents.get, document_id)
     except KeyError as exc:
         raise HTTPException(404, "找不到原始文件；舊版已處理文件不可重新處理") from exc
     chunks = item["chunks"]
-    if not chunks:
+    if not chunks or chunk_size is not None or chunk_overlap is not None:
         content = await asyncio.to_thread(Path(item["path"]).read_bytes)
-        chunks = await chunk(settings.chunking_url, decode_text(item["filename"], content))
+        chunks = await chunk(settings.chunking_url, decode_text(item["filename"], content), chunk_size, chunk_overlap)
         await asyncio.to_thread(documents.update_chunks, document_id, chunks)
     return item, chunks
 
@@ -120,7 +121,7 @@ async def document_chunks(document_id: str) -> tuple[dict, list[dict]]:
 @app.post("/api/documents/process", response_model=DocumentList)
 async def process_documents(request: ProcessRequest):
     for document_id in request.document_ids:
-        item, chunks = await document_chunks(document_id)
+        item, chunks = await document_chunks(document_id, request.chunk_size, request.chunk_overlap)
         if request.mode == "embeddings":
             vectors: list[list[float]] = []
             for start in range(0, len(chunks), 16):
@@ -131,12 +132,13 @@ async def process_documents(request: ProcessRequest):
             await asyncio.to_thread(documents.update_processing, document_id, embeddings_ready=True)
         else:
             triples: list[dict] = []
-            batch_size = max(1, settings.graph_batch_chunks)
+            batch_size = request.batch_chunks or max(1, settings.graph_batch_chunks)
             for start in range(0, len(chunks), batch_size):
                 batch = chunks[start:start + batch_size]
                 triples.extend(await extract_triples(
                     settings.ollama_base_url, settings.ollama_chat_model,
                     "\n\n".join(str(chunk_item["text"]) for chunk_item in batch), int(batch[0]["index"]),
+                    request.system_prompt,
                 ))
             await asyncio.to_thread(documents.update_processing, document_id, triples=triples)
     return await list_documents()

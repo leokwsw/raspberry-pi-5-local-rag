@@ -51,6 +51,10 @@ class DocumentSummary(BaseModel):
 class ProcessRequest(BaseModel):
     document_ids: list[str] = Field(min_length=1, max_length=50)
     mode: Literal["embeddings", "triples"]
+    system_prompt: str | None = Field(default=None, min_length=20, max_length=12000)
+    chunk_size: int | None = Field(default=None, ge=200, le=4000)
+    chunk_overlap: int | None = Field(default=None, ge=0, le=1000)
+    batch_chunks: int | None = Field(default=None, ge=1, le=16)
 
 
 class TripleItem(BaseModel):

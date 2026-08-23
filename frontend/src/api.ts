@@ -27,6 +27,12 @@ export type TripleItem = {
     id: string; subject: string; predicate: string; object: string; document_id: string;
     filename: string; chunk_index: number; stored: boolean;
 }
+export type TripleExtractionConfig = {
+    system_prompt: string;
+    chunk_size: number;
+    chunk_overlap: number;
+    batch_chunks: number;
+}
 
 const demoMode = import.meta.env.VITE_DEMO === 'true'
 const demoDocuments: DocumentItem[] = [
@@ -106,8 +112,8 @@ export const api = {
         return request<DocumentItem>('/api/documents', {method: 'POST', body})
     },
     remove: (id: string) => request<void>(`/api/documents/${id}`, {method: 'DELETE'}),
-    process: (documentIds: string[], mode: 'embeddings' | 'triples') => request<{documents: DocumentItem[]; total_chunks: number}>('/api/documents/process', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({document_ids: documentIds, mode}),
+    process: (documentIds: string[], mode: 'embeddings' | 'triples', config?: TripleExtractionConfig) => request<{documents: DocumentItem[]; total_chunks: number}>('/api/documents/process', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({document_ids: documentIds, mode, ...config}),
     }),
     triples: () => demoMode ? Promise.resolve([
         {id: 't1', subject: 'Raspberry Pi 5', predicate: '執行', object: 'Ollama', document_id: 'demo-1', filename: '部署筆記.md', chunk_index: 7, stored: true},

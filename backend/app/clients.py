@@ -42,8 +42,14 @@ async def embed(base_url: str, model: str, texts: Sequence[str]) -> list[list[fl
     return embeddings
 
 
-async def chunk(base_url: str, text: str) -> list[dict]:
-    data = await post_json(f"{base_url.rstrip('/')}/chunk", {"text": text})
+async def chunk(base_url: str, text: str, chunk_size: int | None = None,
+                overlap: int | None = None) -> list[dict]:
+    payload: dict = {"text": text}
+    if chunk_size is not None:
+        payload["chunk_size"] = chunk_size
+    if overlap is not None:
+        payload["overlap"] = overlap
+    data = await post_json(f"{base_url.rstrip('/')}/chunk", payload)
     return data["chunks"]
 
 
@@ -94,7 +100,8 @@ def parse_triples(content: str, chunk_index: int, limit: int = 40) -> list[dict]
     return triples
 
 
-async def extract_triples(base_url: str, model: str, text: str, chunk_index: int) -> list[dict]:
+async def extract_triples(base_url: str, model: str, text: str, chunk_index: int,
+                          system_prompt: str | None = None) -> list[dict]:
     data = await post_json(
         f"{base_url.rstrip('/')}/api/chat",
         {
@@ -102,7 +109,7 @@ async def extract_triples(base_url: str, model: str, text: str, chunk_index: int
             "messages": [
                 {
                     "role": "system",
-                    "content": (
+                    "content": system_prompt or (
                         "從內容抽取明確、可驗證的知識三元組。只輸出 JSON："
                         '{"triples":[{"subject":"實體","predicate":"關係","object":"實體或值"}]}。'
                         "不可加入內容沒有陳述的知識；沒有三元組時輸出空陣列。"

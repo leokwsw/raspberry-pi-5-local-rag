@@ -1,10 +1,27 @@
 import {ChangeEvent, DragEvent, useEffect, useMemo, useState} from 'react'
 import {
-    ArrowClockwise, CheckCircle, DownloadSimple, Eye, FileText, FloppyDisk, Trash, UploadSimple,
+    ArrowClockwise, ArrowCounterClockwise, CheckCircle, DownloadSimple, Eye, FileText, FloppyDisk,
+    SlidersHorizontal, Trash, UploadSimple,
 } from '@phosphor-icons/react'
-import {api, type DocumentItem, type TripleItem} from './api'
+import {api, type DocumentItem, type TripleExtractionConfig, type TripleItem} from './api'
 
 const ACCEPT = '.txt,.rtf,.csv,.tsv,.log,.md,.markdown,.py,.js,.jsx,.ts,.tsx,.json,.yaml,.yml,.toml,.ini,.conf,.cfg,.sql,.sh,.css,.html,.xml,.env'
+const DEFAULT_TRIPLE_PROMPT = `從內容抽取明確、可驗證的知識三元組。只輸出 JSON：{"triples":[{"subject":"實體","predicate":"關係","object":"實體或值"}]}。不可加入內容沒有陳述的知識；沒有三元組時輸出空陣列。`
+const DEFAULT_TRIPLE_CONFIG: TripleExtractionConfig = {
+    system_prompt: DEFAULT_TRIPLE_PROMPT,
+    chunk_size: 900,
+    chunk_overlap: 120,
+    batch_chunks: 4,
+}
+
+function loadTripleConfig(): TripleExtractionConfig {
+    try {
+        const saved = localStorage.getItem('local-rag-triple-config')
+        return saved ? {...DEFAULT_TRIPLE_CONFIG, ...JSON.parse(saved)} : DEFAULT_TRIPLE_CONFIG
+    } catch {
+        return DEFAULT_TRIPLE_CONFIG
+    }
+}
 
 function formatBytes(bytes: number) {
     if (bytes < 1024) return `${bytes} B`
@@ -79,13 +96,23 @@ export function ProcessPanel({documents, refresh}: {documents: DocumentItem[]; r
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [busy, setBusy] = useState(false)
     const [message, setMessage] = useState('')
+    const [tripleConfig, setTripleConfig] = useState<TripleExtractionConfig>(loadTripleConfig)
     const eligible = useMemo(() => documents.filter(item => mode === 'triples' ? !item.triples_ready : !item.embeddings_ready), [documents, mode])
 
     async function process() {
         if (!selected.size) return
+        if (mode === 'triples' && (tripleConfig.system_prompt.trim().length < 20 ||
+            tripleConfig.chunk_size < 200 || tripleConfig.chunk_size > 4000 ||
+            tripleConfig.chunk_overlap < 0 || tripleConfig.chunk_overlap > Math.min(1000, tripleConfig.chunk_size / 2) ||
+            tripleConfig.batch_chunks < 1 || tripleConfig.batch_chunks > 16)) {
+            setMessage('請檢查 Prompt 及 Chunk 設定範圍。')
+            return
+        }
         setBusy(true); setMessage(mode === 'triples' ? 'Ollama 正在抽取知識三元組…' : 'Ollama 正在建立 embeddings…')
         try {
-            await api.process([...selected], mode); await refresh(); setSelected(new Set()); setMessage('處理完成。')
+            if (mode === 'triples') localStorage.setItem('local-rag-triple-config', JSON.stringify(tripleConfig))
+            await api.process([...selected], mode, mode === 'triples' ? tripleConfig : undefined)
+            await refresh(); setSelected(new Set()); setMessage('處理完成。')
         } catch (reason) {
             setMessage(reason instanceof Error ? reason.message : '處理失敗')
         } finally { setBusy(false) }
@@ -97,6 +124,24 @@ export function ProcessPanel({documents, refresh}: {documents: DocumentItem[]; r
             <button role="tab" aria-selected={mode === 'embeddings'} onClick={() => {setMode('embeddings'); setSelected(new Set())}}>Embeddings</button></div>
         <div className="process-summary"><div><strong>{mode === 'triples' ? '使用 Ollama 抽取 Subject–Predicate–Object' : '建立向量並寫入 Qdrant'}</strong>
             <span>{eligible.length} 個文件等待此步驟</span></div><button className="primary-button compact" disabled={!selected.size || busy} onClick={() => void process()}>{busy ? '處理中…' : `處理已選文件 (${selected.size})`}</button></div>
+        {mode === 'triples' && <details className="triple-config" open>
+            <summary><span><SlidersHorizontal size={17}/>Prompt 與 Chunk 設定</span><small>設定會在開始抽取時套用</small></summary>
+            <div className="triple-config-body">
+                <label className="prompt-field"><span>System Prompt</span><textarea value={tripleConfig.system_prompt} disabled={busy}
+                    onChange={event => setTripleConfig(previous => ({...previous, system_prompt: event.target.value}))}/>
+                    <small>回應必須維持 `triples` JSON 結構，否則該批次不會產生三元組。</small></label>
+                <div className="chunk-config-grid">
+                    <label><span>Chunk 大小</span><input type="number" min="200" max="4000" step="100" disabled={busy}
+                        value={tripleConfig.chunk_size} onChange={event => setTripleConfig(previous => ({...previous, chunk_size: Number(event.target.value)}))}/><small>200–4,000 字元</small></label>
+                    <label><span>重疊字元</span><input type="number" min="0" max={Math.min(1000, Math.floor(tripleConfig.chunk_size / 2))} step="20" disabled={busy}
+                        value={tripleConfig.chunk_overlap} onChange={event => setTripleConfig(previous => ({...previous, chunk_overlap: Number(event.target.value)}))}/><small>保留跨區塊語境</small></label>
+                    <label><span>每批 Chunk</span><input type="number" min="1" max="16" step="1" disabled={busy}
+                        value={tripleConfig.batch_chunks} onChange={event => setTripleConfig(previous => ({...previous, batch_chunks: Number(event.target.value)}))}/><small>較小值較省記憶體</small></label>
+                </div>
+                <div className="config-footer"><span>估計每 64KB 約 {Math.ceil(64000 / Math.max(1, tripleConfig.chunk_size - tripleConfig.chunk_overlap))} 個 chunks</span>
+                    <button className="quiet-button" disabled={busy} onClick={() => setTripleConfig(DEFAULT_TRIPLE_CONFIG)}><ArrowCounterClockwise size={15}/>重設預設值</button></div>
+            </div>
+        </details>}
         {message && <p className="workflow-message" role="status">{message}</p>}
         <div className="data-table-wrap"><table className="data-table"><thead><tr><th><input type="checkbox" aria-label="選取全部待處理文件" checked={eligible.length > 0 && selected.size === eligible.length}
             onChange={event => setSelected(event.target.checked ? new Set(eligible.map(item => item.document_id)) : new Set())}/></th><th>文件</th><th>區塊</th><th>Embeddings</th><th>三元組</th></tr></thead>
