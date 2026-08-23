@@ -1,4 +1,17 @@
 services:
+  arangodb:
+    image: arangodb:3.12.6.1
+    restart: unless-stopped
+    environment:
+      ARANGO_ROOT_PASSWORD: ${ARANGODB_PASSWORD:?Set ARANGODB_PASSWORD in .env}
+    volumes:
+      - arangodb-data:/var/lib/arangodb3
+    healthcheck:
+      test: ["CMD-SHELL", "arangosh --server.endpoint tcp://127.0.0.1:8529 --server.username root --server.password \"$${ARANGO_ROOT_PASSWORD}\" --javascript.execute-string 'db._version()'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
   qdrant:
     image: qdrant/qdrant:v1.15.4
     restart: unless-stopped
@@ -46,6 +59,8 @@ services:
     volumes:
       - backend-data:/data
     depends_on:
+      arangodb:
+        condition: service_healthy
       qdrant:
         condition: service_healthy
       chunking-service:
@@ -62,6 +77,7 @@ services:
       - backend
 
 volumes:
+  arangodb-data:
   qdrant-data:
   reranker-models:
   backend-data:

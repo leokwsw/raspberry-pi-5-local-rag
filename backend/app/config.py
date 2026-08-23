@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     retrieval_limit: int = 20
     rerank_limit: int = 5
     memory_db_path: str = "/data/memory.db"
-    graph_db_path: str = "/data/knowledge-graph.db"
+    arangodb_url: str = "http://localhost:8529"
+    arangodb_database: str = "local_rag_graph"
+    arangodb_username: str = "root"
+    arangodb_password: str = ""
     graph_extraction_enabled: bool = True
     graph_batch_chunks: int = 4
     memory_max_messages: int = 12

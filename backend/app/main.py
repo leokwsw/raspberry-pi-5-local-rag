@@ -21,7 +21,12 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 store = VectorStore(settings.qdrant_url, settings.qdrant_collection)
 memory = ConversationMemory(settings.memory_db_path, settings.memory_max_messages)
-graph_store = KnowledgeGraphStore(settings.graph_db_path)
+graph_store = KnowledgeGraphStore(
+    settings.arangodb_url,
+    settings.arangodb_database,
+    settings.arangodb_username,
+    settings.arangodb_password,
+)
 
 
 @asynccontextmanager
@@ -46,24 +51,27 @@ async def service_error_handler(_, exc: ServiceError):
     return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
-async def is_healthy(url: str) -> bool:
+async def is_healthy(url: str, auth: tuple[str, str] | None = None) -> bool:
     try:
         async with httpx.AsyncClient(timeout=3) as client:
-            return (await client.get(url)).is_success
+            return (await client.get(url, auth=auth)).is_success
     except httpx.HTTPError:
         return False
 
 
 @app.get("/api/health")
 async def health():
-    ollama, qdrant, reranker, chunker = await asyncio.gather(
+    ollama, qdrant, arangodb, reranker, chunker = await asyncio.gather(
         is_healthy(f"{settings.ollama_base_url.rstrip('/')}/api/tags"),
         is_healthy(f"{settings.qdrant_url.rstrip('/')}/healthz"),
+        is_healthy(f"{settings.arangodb_url.rstrip('/')}/_api/version",
+                   (settings.arangodb_username, settings.arangodb_password)),
         is_healthy(f"{settings.reranker_url.rstrip('/')}/health"),
         is_healthy(f"{settings.chunking_url.rstrip('/')}/health"),
     )
-    return {"status": "ok" if all((ollama, qdrant, reranker, chunker)) else "degraded",
-            "services": {"ollama": ollama, "qdrant": qdrant, "reranker": reranker, "chunking": chunker}}
+    return {"status": "ok" if all((ollama, qdrant, arangodb, reranker, chunker)) else "degraded",
+            "services": {"ollama": ollama, "qdrant": qdrant, "arangodb": arangodb,
+                         "reranker": reranker, "chunking": chunker}}
 
 
 @app.post("/api/documents", response_model=DocumentSummary, status_code=201)

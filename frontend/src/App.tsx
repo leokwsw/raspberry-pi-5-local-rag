@@ -31,9 +31,9 @@ function Tabs({tab, disabled, onChange}: { tab: Tab; disabled: boolean; onChange
 }
 
 function Status({health}: { health: Health | null }) {
-    const okay = health?.services && ['ollama', 'qdrant', 'reranker', 'chunking'].every(key => health.services[key])
+    const okay = health?.services && ['ollama', 'qdrant', 'arangodb', 'reranker', 'chunking'].every(key => health.services[key])
     return <footer className="status"><span
-        className={okay ? 'status-dot online' : 'status-dot'}/>{okay ? 'Ollama · Qdrant · 重排序服務 · 分段服務均正常' : '正在檢查本機服務…'}
+        className={okay ? 'status-dot online' : 'status-dot'}/>{okay ? 'Ollama · Qdrant · ArangoDB · 重排序服務 · 分段服務均正常' : '正在檢查本機服務…'}
     </footer>
 }
 

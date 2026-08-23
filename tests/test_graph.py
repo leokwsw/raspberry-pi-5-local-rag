@@ -1,25 +1,20 @@
 from app.graph import KnowledgeGraphStore
 
 
-def test_graph_store_replaces_and_deletes_document(tmp_path):
-    store = KnowledgeGraphStore(str(tmp_path / "graph.db"))
-    count = store.replace_document("doc-1", "notes.md", [
-        {"subject": "Raspberry Pi 5", "predicate": "has", "object": "16GB RAM", "chunk_index": 2},
-        {"subject": "Raspberry Pi 5", "predicate": "runs", "object": "Ollama", "chunk_index": 3},
-    ])
-
-    graph = store.graph()
-    assert count == 2
-    assert {node["label"] for node in graph["nodes"]} == {"Raspberry Pi 5", "16GB RAM", "Ollama"}
-    assert len(graph["edges"]) == 2
-    assert store.document_counts() == {"doc-1": 2}
-
-    store.delete_document("doc-1")
-    assert store.graph() == {"nodes": [], "edges": []}
+def test_entity_keys_are_stable_and_case_insensitive():
+    assert KnowledgeGraphStore._entity_key(" Raspberry Pi 5 ") == KnowledgeGraphStore._entity_key("raspberry pi 5")
 
 
-def test_graph_store_deduplicates_same_relationship(tmp_path):
-    store = KnowledgeGraphStore(str(tmp_path / "graph.db"))
-    triple = {"subject": "Pi", "predicate": "uses", "object": "ARM64", "chunk_index": 1}
+def test_edge_keys_include_document_identity():
+    first = KnowledgeGraphStore._edge_key("doc-1", "Pi", "uses", "ARM64")
+    duplicate = KnowledgeGraphStore._edge_key("doc-1", "pi", "USES", "arm64")
+    other_document = KnowledgeGraphStore._edge_key("doc-2", "Pi", "uses", "ARM64")
 
-    assert store.replace_document("doc-1", "notes.md", [triple, triple]) == 1
+    assert first == duplicate
+    assert first != other_document
+
+
+def test_clean_only_accepts_bounded_strings():
+    assert KnowledgeGraphStore._clean(" value ") == "value"
+    assert KnowledgeGraphStore._clean(None) == ""
+    assert len(KnowledgeGraphStore._clean("x" * 300)) == 200

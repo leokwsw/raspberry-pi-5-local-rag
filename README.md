@@ -10,6 +10,7 @@ Ollama，向量資料庫使用 Qdrant，檢索結果交由既有 `Qwen3-Reranker
 - `chunking-service`：FastAPI 純文字分段服務
 - `reranker-service`：既有 Qwen3 reranker，以 Docker service 執行並持久化 Hugging Face 模型快取
 - `qdrant`：Docker volume 持久化向量資料
+- `arangodb`：以原生 vertex／edge collections 持久化知識圖譜
 - `ollama`：在 Raspberry Pi 主機執行，不放入 Docker
 
 ## Raspberry Pi 安裝
@@ -35,6 +36,7 @@ Environment="OLLAMA_HOST=0.0.0.0:11434"
 
 ```bash
 cp .env.example .env
+# 必須先在 .env 設定一個強 ARANGODB_PASSWORD；Compose 會拒絕空密碼
 docker compose up --build -d
 ```
 
@@ -72,5 +74,5 @@ python scripts/import-folder.py /home/pi/knowledge --recursive
 Ollama 與 reranker 不要同時配置過高 parallelism。Pi 5 16GB 建議 Ollama `OLLAMA_NUM_PARALLEL=1`，Qdrant 使用單一
 replica；大量文件匯入時以 16 個 chunk 一批呼叫 embedding。模型檔與 Qdrant volume 最好放在 USB 3 SSD / NVMe，而不是 microSD。
 
-上載文件時會使用現有 chat model，每四個 chunk 一批抽取知識三元組並寫入輕量 SQLite。可透過
+上載文件時會使用現有 chat model，每四個 chunk 一批抽取知識三元組並寫入 ArangoDB Graph。可透過
 `GRAPH_EXTRACTION_ENABLED=false` 關閉，或調整 `GRAPH_BATCH_CHUNKS` 平衡抽取品質與 Pi 上的處理時間。

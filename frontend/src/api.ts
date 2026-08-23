@@ -47,7 +47,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
     health: () => demoMode ? Promise.resolve({
         status: 'ok',
-        services: {ollama: true, qdrant: true, reranker: true, chunking: true}
+        services: {ollama: true, qdrant: true, arangodb: true, reranker: true, chunking: true}
     }) : request<Health>('/api/health'),
     documents: () => demoMode ? Promise.resolve({documents: demoDocuments, total_chunks: 3846}) : request<{
         documents: DocumentItem[];
