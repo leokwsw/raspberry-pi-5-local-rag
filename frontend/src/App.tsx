@@ -1,6 +1,15 @@
 import {FormEvent, useCallback, useEffect, useMemo, useState} from 'react'
 import {ArrowSquareOut, Desktop, FileText, Moon, Sun} from '@phosphor-icons/react'
-import {api, type Citation, type DocumentItem, type Health, type KnowledgeGraph, type OllamaModel, type QueryResult, type SystemOverview} from './api'
+import {
+    api,
+    type Citation,
+    type DocumentItem,
+    type Health,
+    type KnowledgeGraph,
+    type OllamaModel,
+    type QueryResult,
+    type SystemOverview
+} from './api'
 import {KnowledgeGraphPanel} from './KnowledgeGraphPanel'
 import {ProcessPanel, TriplesPanel, UploadPanel} from './WorkflowPanels'
 
@@ -8,7 +17,7 @@ type Tab = 'upload' | 'process' | 'triples' | 'graph' | 'rag'
 type Theme = 'system' | 'light' | 'dark'
 type ChatEntry = { role: 'user' | 'assistant'; content: string; citations?: Citation[] }
 
-function ThemeControl({theme, onChange}: {theme: Theme; onChange: (theme: Theme) => void}) {
+function ThemeControl({theme, onChange}: { theme: Theme; onChange: (theme: Theme) => void }) {
     const Icon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Desktop
     return <label className="theme-control" title="外觀模式">
         <Icon size={18}/><span className="visually-hidden">外觀模式</span>
@@ -22,32 +31,47 @@ function ThemeControl({theme, onChange}: {theme: Theme; onChange: (theme: Theme)
 
 function Tabs({tab, disabled, onChange}: { tab: Tab; disabled: boolean; onChange: (tab: Tab) => void }) {
     return <div className="tabs workflow-tabs" role="tablist" aria-label="知識庫工作流程">
-        <button className="tab" role="tab" aria-selected={tab === 'upload'} disabled={disabled} onClick={() => onChange('upload')}><span>1</span>上載</button>
-        <button className="tab" role="tab" aria-selected={tab === 'process'} disabled={disabled} onClick={() => onChange('process')}><span>2</span>處理文件</button>
-        <button className="tab" role="tab" aria-selected={tab === 'triples'} disabled={disabled} onClick={() => onChange('triples')}><span>3</span>知識三元組</button>
+        <button className="tab" role="tab" aria-selected={tab === 'upload'} disabled={disabled}
+                onClick={() => onChange('upload')}><span>1</span>上載
+        </button>
+        <button className="tab" role="tab" aria-selected={tab === 'process'} disabled={disabled}
+                onClick={() => onChange('process')}><span>2</span>處理文件
+        </button>
+        <button className="tab" role="tab" aria-selected={tab === 'triples'} disabled={disabled}
+                onClick={() => onChange('triples')}><span>3</span>知識三元組
+        </button>
         <button className="tab" role="tab" aria-selected={tab === 'graph'} disabled={disabled}
-                onClick={() => onChange('graph')}><span>4</span>知識圖譜</button>
-        <button className="tab" role="tab" aria-selected={tab === 'rag'} disabled={disabled} onClick={() => onChange('rag')}><span>5</span>RAG 搜尋</button>
+                onClick={() => onChange('graph')}><span>4</span>知識圖譜
+        </button>
+        <button className="tab" role="tab" aria-selected={tab === 'rag'} disabled={disabled}
+                onClick={() => onChange('rag')}><span>5</span>RAG 搜尋
+        </button>
     </div>
 }
 
 function Status({health}: { health: Health | null }) {
     const okay = health?.services && ['ollama', 'qdrant', 'arangodb', 'reranker', 'chunking'].every(key => health.services[key])
-    return <footer className="app-footer"><div className="status"><span
-        className={okay ? 'status-dot online' : 'status-dot'}/>{okay ? 'Ollama · Qdrant · ArangoDB · 重排序服務 · 分段服務均正常' : '正在檢查本機服務…'}
-    </div><p>Raspberry Pi is a trademark of Raspberry Pi Ltd.</p></footer>
+    return (
+        <footer className="app-footer">
+            <div className="status"><span
+                className={okay ? 'status-dot online' : 'status-dot'}/>{okay ? 'Ollama · Qdrant · ArangoDB · 重排序服務 · 分段服務均正常' : '正在檢查本機服務…'}
+            </div>
+        </footer>
+    )
 }
 
 function Sources({citations}: { citations: Citation[] }) {
-    return <section className="sources" aria-labelledby="sources-title">
-        <h3 id="sources-title">來源</h3>
-        <div className="source-list">{citations.map(item => <details className="source"
-                                                                     key={`${item.filename}-${item.chunk_index}`}>
-            <summary><span><FileText size={18} weight="regular"/>{item.filename}</span><span
-                className="chunk">區塊 {item.chunk_index} <ArrowSquareOut size={16}/></span></summary>
-            <p>{item.text}</p>
-        </details>)}</div>
-    </section>
+    return (
+        <section className="sources" aria-labelledby="sources-title">
+            <h3 id="sources-title">來源</h3>
+            <div className="source-list">{citations.map(item => <details className="source"
+                                                                         key={`${item.filename}-${item.chunk_index}`}>
+                <summary><span><FileText size={18} weight="regular"/>{item.filename}</span><span
+                    className="chunk">區塊 {item.chunk_index} <ArrowSquareOut size={16}/></span></summary>
+                <p>{item.text}</p>
+            </details>)}</div>
+        </section>
+    )
 }
 
 function RangeParameter({id, label, value, min, max, step = 1, disabled, onChange}: {
@@ -62,11 +86,14 @@ function RangeParameter({id, label, value, min, max, step = 1, disabled, onChang
 }) {
     const progress = ((value - min) / (max - min)) * 100
     return <div className="range-parameter">
-        <div className="range-label"><label htmlFor={id}>{label}</label><output htmlFor={id}>{value.toLocaleString('en-US')}</output></div>
+        <div className="range-label"><label htmlFor={id}>{label}</label>
+            <output htmlFor={id}>{value.toLocaleString('en-US')}</output>
+        </div>
         <input id={id} type="range" value={value} min={min} max={max} step={step} disabled={disabled}
                style={{'--range-progress': `${progress}%`} as React.CSSProperties}
                onChange={event => onChange(Number(event.target.value))}/>
-        <div className="range-bounds"><span>{min.toLocaleString('en-US')}</span><span>{max.toLocaleString('en-US')}</span></div>
+        <div className="range-bounds">
+            <span>{min.toLocaleString('en-US')}</span><span>{max.toLocaleString('en-US')}</span></div>
     </div>
 }
 
@@ -157,35 +184,50 @@ function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChang
     }
 
     return <>
-        <div className="rag-mode-switch" role="radiogroup" aria-label="搜尋模式"><button role="radio" aria-checked={searchMode === 'pure'} onClick={() => setSearchMode('pure')}>
-            <strong>Pure RAG</strong><span>只以 Qdrant 文件內容檢索</span></button><button role="radio" aria-checked={searchMode === 'graph'} onClick={() => setSearchMode('graph')}>
-            <strong>Graph Search</strong><span>結合 ArangoDB 實體關係</span></button></div>
+        <div className="rag-mode-switch" role="radiogroup" aria-label="搜尋模式">
+            <button role="radio" aria-checked={searchMode === 'pure'} onClick={() => setSearchMode('pure')}>
+                <strong>Pure RAG</strong><span>只以 Qdrant 文件內容檢索</span></button>
+            <button role="radio" aria-checked={searchMode === 'graph'} onClick={() => setSearchMode('graph')}>
+                <strong>Graph Search</strong><span>結合 ArangoDB 實體關係</span></button>
+        </div>
         <div className="rag-model-bar">
-            <div className="rag-model-heading"><span className="ollama-icon" aria-hidden="true"/><div><label htmlFor="rag-chat-model">回答模型</label><span>從 Ollama 已安裝的生成模型選擇</span></div></div>
+            <div className="rag-model-heading"><span className="ollama-icon" aria-hidden="true"/>
+                <div><label htmlFor="rag-chat-model">回答模型</label><span>從 Ollama 已安裝的生成模型選擇</span></div>
+            </div>
             <select id="rag-chat-model" value={selectedModel} disabled={loading || chatModels.length === 0}
                     onChange={event => {
                         setSelectedModel(event.target.value)
                         localStorage.setItem('local-rag-search-model', event.target.value)
                     }}>
                 {chatModels.length === 0 ? <option value="">未找到生成模型</option> : chatModels.map(model =>
-                    <option key={model.name} value={model.name}>{model.name} · {(model.size / 1_000_000_000).toFixed(1)} GB</option>)}
+                    <option key={model.name}
+                            value={model.name}>{model.name} · {(model.size / 1_000_000_000).toFixed(1)} GB</option>)}
             </select>
         </div>
         <details className="advanced-parameters" open>
-            <summary><span>進階參數</span><small>{searchMode === 'pure' ? 'Pure RAG 檢索設定' : 'Graph Search 檢索設定'}</small></summary>
+            <summary>
+                <span>進階參數</span><small>{searchMode === 'pure' ? 'Pure RAG 檢索設定' : 'Graph Search 檢索設定'}</small>
+            </summary>
             <div className={`range-parameters ${searchMode === 'graph' ? 'graph-parameters' : ''}`}>
                 {searchMode === 'graph' && <>
-                    <RangeParameter id="knn-neighbors" label="KNN Neighbors" value={knnNeighbors} min={256} max={8192} step={256} disabled={loading} onChange={setKnnNeighbors}/>
-                    <RangeParameter id="fanout" label="Fanout" value={fanout} min={50} max={1000} step={50} disabled={loading} onChange={setFanout}/>
-                    <RangeParameter id="number-of-hops" label="Number of Hops" value={numberOfHops} min={1} max={4} disabled={loading} onChange={setNumberOfHops}/>
+                    <RangeParameter id="knn-neighbors" label="KNN Neighbors" value={knnNeighbors} min={256} max={8192}
+                                    step={256} disabled={loading} onChange={setKnnNeighbors}/>
+                    <RangeParameter id="fanout" label="Fanout" value={fanout} min={50} max={1000} step={50}
+                                    disabled={loading} onChange={setFanout}/>
+                    <RangeParameter id="number-of-hops" label="Number of Hops" value={numberOfHops} min={1} max={4}
+                                    disabled={loading} onChange={setNumberOfHops}/>
                 </>}
-                <RangeParameter id="top-k-results" label="Top K Results" value={topK} min={1} max={50} disabled={loading} onChange={setTopK}/>
+                <RangeParameter id="top-k-results" label="Top K Results" value={topK} min={1} max={50}
+                                disabled={loading} onChange={setTopK}/>
             </div>
         </details>
-        <div className="chat-toolbar"><div className="library-meta"><FileText size={18}/>{documents.length} 個文件
-            · {totalChunks.toLocaleString('zh-Hant')} 個區塊 · 剛剛同步
-        </div><button type="button" className="secondary-button" disabled={loading || entries.length === 0}
-                      onClick={newConversation}>新對話</button>
+        <div className="chat-toolbar">
+            <div className="library-meta"><FileText size={18}/>{documents.length} 個文件
+                · {totalChunks.toLocaleString('zh-Hant')} 個區塊 · 剛剛同步
+            </div>
+            <button type="button" className="secondary-button" disabled={loading || entries.length === 0}
+                    onClick={newConversation}>新對話
+            </button>
         </div>
         {entries.length > 0 && <section className="conversation" aria-label="對話記錄">{entries.map((entry, index) =>
             <article className={`message ${entry.role}`} key={`${entry.role}-${index}`}>
@@ -211,14 +253,16 @@ function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChang
                     <option value="deep">深入</option>
                 </select></div>
                 <div><label htmlFor="document-scope">文件範圍</label><select id="document-scope" value={documentScope}
-                                                                              disabled={loading}
-                                                                              onChange={event => setDocumentScope(event.target.value)}>
+                                                                             disabled={loading}
+                                                                             onChange={event => setDocumentScope(event.target.value)}>
                     <option value="all">所有文件</option>
-                    {documents.map(item => <option value={item.document_id} key={item.document_id}>{item.filename}</option>)}
+                    {documents.map(item => <option value={item.document_id}
+                                                   key={item.document_id}>{item.filename}</option>)}
                 </select></div>
             </div>
             <button className="primary"
-                    disabled={loading || !question.trim() || !selectedModel}>{loading && <span className="button-spinner" aria-hidden="true"/>}
+                    disabled={loading || !question.trim() || !selectedModel}>{loading &&
+                <span className="button-spinner" aria-hidden="true"/>}
                 {loading ? '正在生成答案…' : '取得答案'}</button>
         </form>
         {error && <p className="error" role="alert">{error}</p>}
@@ -263,7 +307,8 @@ export function App() {
     useEffect(() => {
         refresh().catch(() => undefined);
         Promise.all([api.health(), api.models()]).then(([serviceHealth, installedModels]) => {
-            setHealth(serviceHealth); setModels(installedModels)
+            setHealth(serviceHealth);
+            setModels(installedModels)
         }).catch(() => undefined)
     }, [refresh])
     useEffect(() => {
@@ -279,14 +324,19 @@ export function App() {
         rag: '使用純向量 RAG，或加入知識圖譜關係搜尋。',
     }
     return <main className="graph-page">
-        <header className="app-header"><div className="brand-copy"><span className="compatibility-mark">For use with Raspberry Pi 5</span>
-            <h1>Local RAG</h1><p>{subtitles[tab]}</p></div><ThemeControl theme={theme} onChange={setTheme}/></header>
+        <header className="app-header">
+            <div className="brand-copy"><span className="compatibility-mark">For use with Raspberry Pi 5</span>
+                <h1>Local RAG</h1><p>{subtitles[tab]}</p></div>
+            <ThemeControl theme={theme} onChange={setTheme}/></header>
         <section className="panel"><Tabs tab={tab} disabled={queryLoading} onChange={setTab}/>
             {tab === 'upload' ? <UploadPanel documents={documents} overview={overview} refresh={refresh}/> :
-                tab === 'process' ? <ProcessPanel documents={documents} overview={overview} models={models} refresh={refresh}/> :
-                tab === 'triples' ? <TriplesPanel refreshDocuments={refresh}/> :
-                tab === 'graph' ? <KnowledgeGraphPanel graph={graph} loading={graphLoading} error={graphError}/> :
-                <ChatPanel documents={documents} totalChunks={totalChunks} models={models}
-                           defaultModel={overview?.chat_model || ''} onLoadingChange={setQueryLoading}/>}<Status health={health}/></section>
+                tab === 'process' ?
+                    <ProcessPanel documents={documents} overview={overview} models={models} refresh={refresh}/> :
+                    tab === 'triples' ? <TriplesPanel refreshDocuments={refresh}/> :
+                        tab === 'graph' ?
+                            <KnowledgeGraphPanel graph={graph} loading={graphLoading} error={graphError}/> :
+                            <ChatPanel documents={documents} totalChunks={totalChunks} models={models}
+                                       defaultModel={overview?.chat_model || ''}
+                                       onLoadingChange={setQueryLoading}/>}<Status health={health}/></section>
     </main>
 }

@@ -267,6 +267,73 @@ Docker volumes：
 - 三元組 batch 建議由 4 開始，再按記憶體調整
 - 模型及資料庫 volumes 優先放在 SSD／NVMe，不建議長期使用 microSD
 
+## 疑難排解：ArangoDB／Qdrant 顯示 `Unsupported system page size`
+
+Raspberry Pi 5 的 `kernel_2712` 預設使用 16 KB memory page。部分 ArangoDB 及 Qdrant ARM64 container image 內的 `jemalloc` 按 4 KB page size 編譯，因此服務可能在啟動時立即崩潰：
+
+```text
+<jemalloc>: Unsupported system page size
+Segmentation fault (core dumped)
+Aborted (core dumped)
+```
+
+Qdrant 已有相同問題的[官方 issue](https://github.com/qdrant/qdrant/issues/3831)。ArangoDB 的 `cannot start with NUMA numactl --interleave=all` 訊息只代表 container 沒有 `SYS_NICE` capability，並非上述 crash 的根本原因；單獨加入 `cap_add: SYS_NICE` 不會修復 page-size 不相容。
+
+先在 Raspberry Pi 檢查架構、page size 及作業系統：
+
+```bash
+uname -m
+getconf PAGE_SIZE
+cat /etc/os-release
+```
+
+如輸出包含 `aarch64` 及 `16384`，即表示目前使用 16 KB page kernel。
+
+### Raspberry Pi OS 64-bit
+
+建議改用 4 KB page 的 `kernel8.img`。先確認 kernel image 存在並備份設定：
+
+```bash
+ls -l /boot/firmware/kernel8.img
+sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
+sudo nano /boot/firmware/config.txt
+```
+
+在 `config.txt` 末端加入：
+
+```ini
+kernel=kernel8.img
+```
+
+重新啟動並確認 page size：
+
+```bash
+sudo reboot
+getconf PAGE_SIZE
+```
+
+預期結果為 `4096`。Raspberry Pi 官方的[kernel 文件](https://www.raspberrypi.com/documentation/computers/linux_kernel.html)列出 `kernel8` 與 Raspberry Pi 5 `kernel_2712` 的不同 build target。
+
+> 如果系統是 Ubuntu 或其他 Linux distribution，請勿直接套用上述 Raspberry Pi OS 設定；應依該 distribution 的方式安裝及選用 4 KB page kernel。
+
+切換 kernel 後重新啟動服務：
+
+```bash
+./stop.sh
+./start.sh
+docker compose ps
+docker compose logs --tail=100 arangodb qdrant
+```
+
+如果全新安裝曾在 database 初始化途中崩潰，volume 可能只完成部分初始化。確認沒有任何需要保留的資料後，才可刪除 volumes 並重建：
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+`docker compose down -v` 會永久刪除 ArangoDB、Qdrant、backend 及其他 Compose volume 資料，已有知識庫時不可執行。
+
 ## 商標及資產
 
 本專案以指涉方式說明與 Raspberry Pi 5 的相容性，並非 Raspberry Pi Ltd 官方產品。Raspberry Pi 商標使用應遵守[官方商標規則](https://www.raspberrypi.com/trademark-rules/)。Ollama icon 位於 `frontend/public/ollama-logo.svg`。
