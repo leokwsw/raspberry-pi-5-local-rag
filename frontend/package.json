@@ -10,11 +10,13 @@
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
+    "d3-force": "^3.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@types/d3-force": "^3.0.10",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.2",
@@ -27,4 +29,3 @@
     "vite": "^7.1.3"
   }
 }
-

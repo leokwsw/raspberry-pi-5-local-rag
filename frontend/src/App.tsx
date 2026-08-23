@@ -1,6 +1,7 @@
-import {ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useMemo, useState} from 'react'
-import {ArrowSquareOut, FileText, Graph, Trash, UploadSimple} from '@phosphor-icons/react'
+import {ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useState} from 'react'
+import {ArrowSquareOut, FileText, Trash, UploadSimple} from '@phosphor-icons/react'
 import {api, type Citation, type DocumentItem, type Health, type KnowledgeGraph, type QueryResult} from './api'
+import {KnowledgeGraphPanel} from './KnowledgeGraphPanel'
 
 type Tab = 'chat' | 'documents' | 'graph'
 type ChatEntry = { role: 'user' | 'assistant'; content: string; citations?: Citation[] }
@@ -227,53 +228,6 @@ function DocumentsPanel({documents, refresh}: { documents: DocumentItem[]; refre
     </section>
 }
 
-function GraphPanel({graph, loading, error}: { graph: KnowledgeGraph | null; loading: boolean; error: string }) {
-    const layout = useMemo(() => {
-        const nodes = (graph?.nodes || []).slice(0, 48)
-        const nodeIds = new Set(nodes.map(node => node.id))
-        const edges = (graph?.edges || []).filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, 80)
-        const centerX = 400
-        const centerY = 260
-        const radius = Math.min(205, 95 + nodes.length * 4)
-        const positioned = nodes.map((node, index) => ({
-            ...node,
-            x: centerX + Math.cos((index / Math.max(1, nodes.length)) * Math.PI * 2 - Math.PI / 2) * radius,
-            y: centerY + Math.sin((index / Math.max(1, nodes.length)) * Math.PI * 2 - Math.PI / 2) * radius,
-        }))
-        return {nodes: positioned, edges, lookup: new Map(positioned.map(node => [node.id, node]))}
-    }, [graph])
-
-    if (loading) return <p className="graph-state">正在載入知識圖譜…</p>
-    if (error) return <p className="error" role="alert">{error}</p>
-    if (!graph?.edges.length) return <div className="graph-empty"><Graph size={38}/><strong>尚未建立知識關係</strong>
-        <span>上載文件後，系統會使用 Ollama 自動抽取三元組。</span></div>
-
-    return <section className="graph-panel" aria-labelledby="graph-title">
-        <div className="graph-heading"><div><h2 id="graph-title">知識圖譜</h2><p>{graph.nodes.length} 個實體 · {graph.edges.length} 個關係</p></div>
-            {(graph.nodes.length > 48 || graph.edges.length > 80) && <span>畫面顯示首 48 個實體／80 個關係</span>}</div>
-        <div className="graph-canvas">
-            <svg viewBox="0 0 800 520" role="img" aria-label="文件知識圖譜">
-                <defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="24" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>
-                {layout.edges.map(edge => {
-                    const source = layout.lookup.get(edge.source)
-                    const target = layout.lookup.get(edge.target)
-                    if (!source || !target) return null
-                    return <g className="graph-edge" key={edge.id}><line x1={source.x} y1={source.y} x2={target.x} y2={target.y}/>
-                        <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 5}>{edge.predicate.slice(0, 14)}</text></g>
-                })}
-                {layout.nodes.map(node => <g className="graph-node" key={node.id} transform={`translate(${node.x} ${node.y})`}>
-                    <circle r="22"/><text y="38">{node.label.length > 16 ? `${node.label.slice(0, 15)}…` : node.label}</text>
-                    <title>{node.label}</title></g>)}
-            </svg>
-        </div>
-        <div className="triple-list">{graph.edges.slice(0, 50).map(edge => <div className="triple-row" key={edge.id}>
-            <span>{layout.lookup.get(edge.source)?.label || edge.source}</span><strong>{edge.predicate}</strong>
-            <span>{layout.lookup.get(edge.target)?.label || edge.target}</span><small>{edge.filename} · 區塊 {edge.chunk_index}</small>
-        </div>)}</div>
-    </section>
-}
-
 export function App() {
     const [tab, setTab] = useState<Tab>('chat')
     const [queryLoading, setQueryLoading] = useState(false)
@@ -301,11 +255,11 @@ export function App() {
     }, [tab, documents])
     const subtitle = tab === 'chat' ? '匯入純文字，然後向你的私人知識庫提問。' :
         tab === 'documents' ? '只需純文字，就能建立你的私人檢索資料庫。' : '探索文件中的實體及其關係。'
-    return <main>
+    return <main className={tab === 'graph' ? 'graph-page' : ''}>
         <header><h1>Raspberry Pi 5 Local RAG</h1><p>{subtitle}</p></header>
         <section className="panel"><Tabs tab={tab} disabled={queryLoading} onChange={setTab}/>{tab === 'chat' ?
             <ChatPanel documents={documents} totalChunks={totalChunks} onLoadingChange={setQueryLoading}/> : tab === 'documents' ?
             <DocumentsPanel documents={documents} refresh={refresh}/> :
-            <GraphPanel graph={graph} loading={graphLoading} error={graphError}/>}<Status health={health}/></section>
+            <KnowledgeGraphPanel graph={graph} loading={graphLoading} error={graphError}/>}<Status health={health}/></section>
     </main>
 }
