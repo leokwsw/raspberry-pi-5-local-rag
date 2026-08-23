@@ -1,33 +1,20 @@
-import {ChangeEvent, DragEvent, FormEvent, useCallback, useEffect, useState} from 'react'
-import {ArrowSquareOut, FileText, Trash, UploadSimple} from '@phosphor-icons/react'
+import {FormEvent, useCallback, useEffect, useState} from 'react'
+import {ArrowSquareOut, FileText} from '@phosphor-icons/react'
 import {api, type Citation, type DocumentItem, type Health, type KnowledgeGraph, type QueryResult} from './api'
 import {KnowledgeGraphPanel} from './KnowledgeGraphPanel'
+import {ProcessPanel, TriplesPanel, UploadPanel} from './WorkflowPanels'
 
-type Tab = 'chat' | 'documents' | 'graph'
+type Tab = 'upload' | 'process' | 'triples' | 'graph' | 'rag'
 type ChatEntry = { role: 'user' | 'assistant'; content: string; citations?: Citation[] }
 
-const SUPPORTED_FILE_EXTENSIONS = [
-    '.txt', '.rtf', '.csv', '.tsv', '.log', '.md', '.markdown', '.py', '.js', '.jsx', '.ts', '.tsx', '.json',
-    '.yaml', '.yml', '.toml', '.ini', '.conf', '.cfg', '.sql', '.sh', '.css', '.html', '.xml', '.env',
-]
-const FILE_ACCEPT = SUPPORTED_FILE_EXTENSIONS.join(',')
-
-function formatBytes(bytes: number) {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
 function Tabs({tab, disabled, onChange}: { tab: Tab; disabled: boolean; onChange: (tab: Tab) => void }) {
-    return <div className="tabs" role="tablist" aria-label="知識庫功能">
-        <button className="tab" role="tab" aria-selected={tab === 'chat'} disabled={disabled}
-                onClick={() => onChange('chat')}>對話</button>
-        <button className="tab" role="tab" aria-selected={tab === 'documents'}
-                disabled={disabled}
-                onClick={() => onChange('documents')}>文件
-        </button>
+    return <div className="tabs workflow-tabs" role="tablist" aria-label="知識庫工作流程">
+        <button className="tab" role="tab" aria-selected={tab === 'upload'} disabled={disabled} onClick={() => onChange('upload')}><span>1</span>上載</button>
+        <button className="tab" role="tab" aria-selected={tab === 'process'} disabled={disabled} onClick={() => onChange('process')}><span>2</span>處理文件</button>
+        <button className="tab" role="tab" aria-selected={tab === 'triples'} disabled={disabled} onClick={() => onChange('triples')}><span>3</span>知識三元組</button>
         <button className="tab" role="tab" aria-selected={tab === 'graph'} disabled={disabled}
-                onClick={() => onChange('graph')}>圖譜</button>
+                onClick={() => onChange('graph')}><span>4</span>知識圖譜</button>
+        <button className="tab" role="tab" aria-selected={tab === 'rag'} disabled={disabled} onClick={() => onChange('rag')}><span>5</span>RAG 搜尋</button>
     </div>
 }
 
@@ -58,6 +45,7 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
     const [question, setQuestion] = useState('')
     const [language, setLanguage] = useState('zh-Hant')
     const [depth, setDepth] = useState('standard')
+    const [searchMode, setSearchMode] = useState<'pure' | 'graph'>('pure')
     const [documentScope, setDocumentScope] = useState('all')
     const [sessionId, setSessionId] = useState(() => localStorage.getItem('local-rag-session') || '')
     const [entries, setEntries] = useState<ChatEntry[]>([])
@@ -86,6 +74,7 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
                 question: submittedQuestion,
                 language,
                 depth,
+                search_mode: searchMode,
                 session_id: sessionId || undefined,
                 document_ids: documentScope === 'all' ? [] : [documentScope],
             })
@@ -115,6 +104,9 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
     }
 
     return <>
+        <div className="rag-mode-switch" role="radiogroup" aria-label="搜尋模式"><button role="radio" aria-checked={searchMode === 'pure'} onClick={() => setSearchMode('pure')}>
+            <strong>Pure RAG</strong><span>只以 Qdrant 文件內容檢索</span></button><button role="radio" aria-checked={searchMode === 'graph'} onClick={() => setSearchMode('graph')}>
+            <strong>Graph Search</strong><span>結合 ArangoDB 實體關係</span></button></div>
         <div className="chat-toolbar"><div className="library-meta"><FileText size={18}/>{documents.length} 個文件
             · {totalChunks.toLocaleString('zh-Hant')} 個區塊 · 剛剛同步
         </div><button type="button" className="secondary-button" disabled={loading || entries.length === 0}
@@ -158,78 +150,8 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
     </>
 }
 
-function DocumentsPanel({documents, refresh}: { documents: DocumentItem[]; refresh: () => Promise<void> }) {
-    const [busy, setBusy] = useState(false)
-    const [dragging, setDragging] = useState(false)
-    const [message, setMessage] = useState('')
-    const uploadFiles = async (files: File[]) => {
-        if (!files.length) return
-        const supportedFiles = files.filter(file => SUPPORTED_FILE_EXTENSIONS.some(extension => file.name.toLowerCase().endsWith(extension)))
-        const skippedCount = files.length - supportedFiles.length
-        if (!supportedFiles.length) {
-            setMessage('沒有可上載的純文字檔案，請檢查檔案類型。')
-            return
-        }
-        setBusy(true);
-        setMessage(`正在建立 ${supportedFiles.length} 個文件的索引…`)
-        try {
-            for (const file of supportedFiles) await api.upload(file);
-            await refresh();
-            setMessage(`已完成 ${supportedFiles.length} 個文件${skippedCount ? `，略過 ${skippedCount} 個不支援的檔案` : ''}`)
-        } catch (reason) {
-            setMessage(reason instanceof Error ? reason.message : '上載失敗')
-        } finally {
-            setBusy(false)
-        }
-    }
-    const upload = async (event: ChangeEvent<HTMLInputElement>) => {
-        await uploadFiles(Array.from(event.target.files || []))
-        event.target.value = ''
-    }
-    const drop = (event: DragEvent<HTMLLabelElement>) => {
-        event.preventDefault()
-        event.stopPropagation()
-        setDragging(false)
-        if (!busy) void uploadFiles(Array.from(event.dataTransfer.files))
-    }
-    const remove = async (item: DocumentItem) => {
-        if (!window.confirm(`確定移除「${item.filename}」？`)) return;
-        await api.remove(item.document_id);
-        await refresh()
-    }
-    return <section className="documents-panel">
-        <label className={`dropzone ${busy ? 'busy' : ''} ${dragging ? 'dragging' : ''}`}
-               onDragEnter={event => {
-                   event.preventDefault()
-                   if (!busy) setDragging(true)
-               }}
-               onDragOver={event => {
-                   event.preventDefault()
-                   event.dataTransfer.dropEffect = 'copy'
-               }}
-               onDragLeave={event => {
-                   event.preventDefault()
-                   if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false)
-               }}
-               onDrop={drop}><UploadSimple
-            size={34}/><strong>{busy ? '正在處理文件…' : '拖放文件到這裡，或選擇檔案'}</strong><span>TXT、RTF、CSV、LOG、MD、程式碼與設定檔</span><input
-            type="file" multiple disabled={busy} onChange={upload}
-            accept={FILE_ACCEPT}/></label>
-        {message && <p className="upload-message" role="status">{message}</p>}
-        <h2>已建立索引</h2>
-        {documents.length === 0 ? <p className="empty">尚未加入文件。</p> :
-            <div className="document-list">{documents.map(item => <div className="document-row" key={item.document_id}>
-                <FileText size={20}/><span
-                className="document-name">{item.filename}</span><span>{formatBytes(item.size)}</span><span>{item.chunk_count} 個區塊</span>
-                <span>{item.graph_triple_count} 個關係</span>
-                <button className="icon-button" onClick={() => remove(item)} aria-label={`移除 ${item.filename}`}><Trash
-                    size={18}/></button>
-            </div>)}</div>}
-    </section>
-}
-
 export function App() {
-    const [tab, setTab] = useState<Tab>('chat')
+    const [tab, setTab] = useState<Tab>('upload')
     const [queryLoading, setQueryLoading] = useState(false)
     const [documents, setDocuments] = useState<DocumentItem[]>([])
     const [totalChunks, setTotalChunks] = useState(0)
@@ -253,13 +175,18 @@ export function App() {
         api.graph().then(setGraph).catch(reason => setGraphError(reason instanceof Error ? reason.message : '載入圖譜失敗'))
             .finally(() => setGraphLoading(false))
     }, [tab, documents])
-    const subtitle = tab === 'chat' ? '匯入純文字，然後向你的私人知識庫提問。' :
-        tab === 'documents' ? '只需純文字，就能建立你的私人檢索資料庫。' : '探索文件中的實體及其關係。'
-    return <main className={tab === 'graph' ? 'graph-page' : ''}>
-        <header><h1>Raspberry Pi 5 Local RAG</h1><p>{subtitle}</p></header>
-        <section className="panel"><Tabs tab={tab} disabled={queryLoading} onChange={setTab}/>{tab === 'chat' ?
-            <ChatPanel documents={documents} totalChunks={totalChunks} onLoadingChange={setQueryLoading}/> : tab === 'documents' ?
-            <DocumentsPanel documents={documents} refresh={refresh}/> :
-            <KnowledgeGraphPanel graph={graph} loading={graphLoading} error={graphError}/>}<Status health={health}/></section>
+    const subtitles: Record<Tab, string> = {
+        upload: '從上載到搜尋，每一步都由你掌握。', process: '按 Raspberry Pi 的資源節奏處理文件。',
+        triples: '檢查實體關係，再存入 ArangoDB。', graph: '探索文件中的實體及其關係。',
+        rag: '使用純向量 RAG，或加入知識圖譜關係搜尋。',
+    }
+    return <main className="graph-page">
+        <header><h1>Raspberry Pi 5 Local RAG</h1><p>{subtitles[tab]}</p></header>
+        <section className="panel"><Tabs tab={tab} disabled={queryLoading} onChange={setTab}/>
+            {tab === 'upload' ? <UploadPanel documents={documents} refresh={refresh}/> :
+                tab === 'process' ? <ProcessPanel documents={documents} refresh={refresh}/> :
+                tab === 'triples' ? <TriplesPanel refreshDocuments={refresh}/> :
+                tab === 'graph' ? <KnowledgeGraphPanel graph={graph} loading={graphLoading} error={graphError}/> :
+                <ChatPanel documents={documents} totalChunks={totalChunks} onLoadingChange={setQueryLoading}/>}<Status health={health}/></section>
     </main>
 }

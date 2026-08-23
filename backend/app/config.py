@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     retrieval_limit: int = 20
     rerank_limit: int = 5
     memory_db_path: str = "/data/memory.db"
+    document_db_path: str = "/data/documents.db"
+    upload_dir: str = "/data/uploads"
     arangodb_url: str = "http://localhost:8529"
     arangodb_database: str = "local_rag_graph"
     arangodb_username: str = "root"

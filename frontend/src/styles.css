@@ -87,6 +87,218 @@ header p {
     box-shadow: 0 2px 8px rgba(40, 43, 20, .08);
 }
 
+.workflow-tabs .tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: .82rem;
+}
+
+.workflow-tabs .tab > span {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    border: 1px solid #cfd1c1;
+    border-radius: 50%;
+    place-items: center;
+    font-size: .67rem;
+}
+
+.workflow-tabs .tab[aria-selected="true"] > span {
+    border-color: #c6d11e;
+    background: #e9f45b;
+}
+
+.workflow-section {
+    min-height: 480px;
+}
+
+.section-heading, .section-heading .heading-copy {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.section-heading.split {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.section-icon {
+    display: grid;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    place-items: center;
+    color: #4f5700;
+    background: #e9f45b;
+}
+
+.section-heading h2, .section-heading p, .table-heading h3, .table-heading p {
+    margin: 0;
+}
+
+.section-heading h2 {
+    font-size: 1.05rem;
+}
+
+.section-heading p, .table-heading p {
+    margin-top: 5px;
+    color: #6d705f;
+    font-size: .84rem;
+}
+
+.workflow-dropzone {
+    position: relative;
+    display: flex;
+    min-height: 190px;
+    margin-top: 22px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    border: 1.5px dashed #c6c9b8;
+    border-radius: 13px;
+    color: #777b68;
+    background: #fafbef;
+    cursor: pointer;
+}
+
+.workflow-dropzone strong { color: #20230f; }
+.workflow-dropzone span { font-size: .8rem; }
+.workflow-dropzone input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.workflow-dropzone.dragging { border-color: #aebb18; background: #f5f8c8; }
+.workflow-dropzone.busy { opacity: .65; cursor: wait; }
+
+.workflow-message {
+    margin: 12px 0 0;
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: #5f6600;
+    background: #f5f8c8;
+    font-size: .82rem;
+}
+
+.table-heading, .process-summary, .table-filters {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 24px;
+}
+
+.quiet-button, .primary-button.compact {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 12px;
+    border: 1px solid #cfd1c1;
+    border-radius: 8px;
+    background: #fff;
+    font-size: .79rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.primary-button.compact {
+    border-color: #cad51d;
+    background: #e9f45b;
+}
+
+.primary-button.compact:disabled { opacity: .5; cursor: not-allowed; }
+
+.data-table-wrap {
+    position: relative;
+    margin-top: 12px;
+    overflow-x: auto;
+    border: 1px solid #dcdecf;
+    border-radius: 11px;
+}
+
+.data-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    font-size: .78rem;
+}
+
+.data-table th {
+    padding: 10px 12px;
+    color: #777b69;
+    background: #f4f5e9;
+    font-size: .68rem;
+    text-align: left;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.data-table td {
+    padding: 12px;
+    border-top: 1px solid #e4e5d9;
+    color: #606451;
+}
+
+.data-table tbody tr:hover { background: #fbfcec; }
+.file-cell { display: flex; align-items: center; gap: 8px; color: #20230f; }
+.workflow-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 999px; color: #747766; background: #edeedf; white-space: nowrap; }
+.workflow-badge.ready { color: #596100; background: #eff5a5; }
+
+.row-actions { display: flex; gap: 4px; }
+.row-actions button, .row-actions a { display: grid; width: 30px; height: 30px; border: 1px solid #dcdecf; border-radius: 7px; place-items: center; color: #555944; background: #fff; cursor: pointer; }
+.row-actions .danger:hover { color: #a9362a; background: #fff0ed; }
+.table-empty { padding: 35px; color: #777b69; text-align: center; }
+
+.info-card {
+    display: flex;
+    position: relative;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 15px;
+    border: 1px solid #d8dba4;
+    border-radius: 10px;
+    background: #fafbdc;
+}
+
+.info-card div { display: grid; gap: 3px; font-size: .78rem; color: #666a56; }
+.info-card strong { color: #20230f; }
+.info-close { position: absolute; top: 7px; right: 9px; border: 0; background: transparent; cursor: pointer; }
+
+.subtabs { display: flex; gap: 5px; margin-top: 24px; padding: 4px; border-radius: 10px; background: #eff0e3; }
+.subtabs button { flex: 1; padding: 10px; border: 0; border-radius: 7px; color: #6d705f; background: transparent; font-weight: 750; cursor: pointer; }
+.subtabs button[aria-selected="true"] { color: #20230f; background: #fff; box-shadow: 0 2px 8px rgba(40,43,20,.07); }
+.process-summary { padding: 15px; border: 1px solid #dcdecf; border-radius: 10px; background: #fafbef; }
+.process-summary > div { display: grid; gap: 4px; }
+.process-summary span { color: #737765; font-size: .78rem; }
+
+.table-filters input { flex: 1; max-width: 430px; padding: 10px 12px; border: 1px solid #d2d5c4; border-radius: 8px; background: #fff; }
+.table-filters span { color: #737765; font-size: .78rem; }
+.triples-table td small { display: block; margin-top: 3px; color: #8a8d7b; }
+.predicate-pill { padding: 4px 8px; border-radius: 6px; color: #596100; background: #f0f4b6; font-weight: 700; }
+
+.rag-mode-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 22px;
+}
+
+.rag-mode-switch button {
+    display: grid;
+    gap: 4px;
+    padding: 13px 15px;
+    border: 1px solid #d6d8c8;
+    border-radius: 10px;
+    color: #6d705f;
+    text-align: left;
+    background: #fafbef;
+    cursor: pointer;
+}
+
+.rag-mode-switch button[aria-checked="true"] { border-color: #bec916; color: #20230f; background: #f6f9c7; box-shadow: inset 3px 0 #bdca20; }
+.rag-mode-switch span { font-size: .75rem; }
+
 .tab:disabled {
     cursor: not-allowed;
     opacity: .58;
@@ -816,6 +1028,31 @@ textarea:disabled, select:disabled {
 
     .panel {
         padding: 20px 20px 0;
+    }
+
+    .workflow-tabs {
+        overflow-x: auto;
+        justify-content: flex-start;
+    }
+
+    .workflow-tabs .tab {
+        flex: 0 0 auto;
+        min-width: 112px;
+    }
+
+    .section-heading.split, .process-summary {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .workflow-dropzone {
+        min-height: 165px;
+        padding: 18px;
+        text-align: center;
+    }
+
+    .rag-mode-switch {
+        grid-template-columns: 1fr;
     }
 
     .fields {

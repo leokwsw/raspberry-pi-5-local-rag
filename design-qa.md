@@ -1,45 +1,48 @@
-# Design QA — Knowledge Graph
+# Design QA — Five-step local knowledge workflow
 
 ## Evidence
 
-- Source visual truth: live local reference at `http://127.0.0.1:3001/#visualize`, implemented by
-  `/Users/leowu/self/dgx-spark-txt2kg/frontend/components/tabs/VisualizeTab.tsx` and its graph viewer.
-- Implementation: live Raspberry Pi frontend at `http://127.0.0.1:5173/`, 圖譜 tab.
-- Desktop comparison viewport: 1440 × 1024 CSS pixels at the browser's default density.
-- Responsive verification: 390 × 844 CSS pixels through Chrome device-metrics emulation.
-- State: reference ArangoDB graph populated (80 nodes / 54 relationships); implementation demo graph populated
-  (4 entities / 3 relationships). Counts intentionally reflect each source's actual data.
+- Reference surfaces captured live from `http://127.0.0.1:3001/#upload`, `#configure`, `#edit`, `#visualize`, and `/rag`.
+- Implementation captured live from `http://127.0.0.1:3000/` in the same Codex in-app browser session.
+- Desktop reference and implementation used the same browser viewport.
+- Responsive implementation verified at 390 × 844 CSS pixels with Chrome device-metrics emulation.
+- Production state: one legacy processed document, 7 chunks, 56 ArangoDB triples; all data is from the Raspberry Pi stack.
 
-## Visual comparison
+## Comparison
 
-The source and implementation were captured in the same browser session and inspected together. The implementation
-matches the reference's core composition: bordered visualization card, icon-led title and description, dense single-row
-desktop toolbar, large graph stage, force/tree/radial layout choices, database toggle, graph totals, search, export,
-fullscreen and zoom controls. The NVIDIA black/green treatment was intentionally translated to the Raspberry Pi app's
-existing cream, paper-white, charcoal and fluorescent lime tokens.
+The implementation uses the reference project's workflow concepts—not its dark NVIDIA theme, simulated counts, model
+selectors, or storage cards. It preserves the Raspberry Pi app's cream/paper/charcoal/lime design system and implements
+five numbered top-level tabs: Upload, Process Documents, Knowledge Triples, Knowledge Graph Visualization, and RAG Search.
 
-The focused toolbar and graph-stage regions remained legible in both captures. The implementation uses the full graph
-tab width (up to 1180 px), while chat and document tabs retain their original 860 px measure.
+Reference-equivalent surfaces are present: drag/drop uploader plus document table and actions; separate Triple Extraction
+and Embeddings processing tabs; a searchable triples table with explicit Graph DB storage; the previously verified graph
+viewer; and Pure RAG / Graph Search selection above the existing question workflow.
 
 ## Findings and fixes
 
-- P1: no blocking visual or functional mismatch remains.
-- P2: the original Raspberry Pi graph was a static circular SVG with no controls. It was replaced with an interactive
-  D3 force graph and the reference page's information/control hierarchy.
-- P2: narrow screens could not fit the desktop toolbar. Controls now wrap into multiple rows and the graph stage scrolls
-  internally; at 390 px, document width equals viewport width (`scrollWidth = 390`).
-- Intentional deviation: the lightweight 3D option applies perspective to the SVG instead of importing the reference
-  project's heavier WebGL renderer, which is more appropriate for Raspberry Pi 5 resources.
+- P1 fixed: upload previously triggered chunking, embeddings, triple extraction, and graph storage as one opaque request.
+  New uploads are now persisted first and explicitly processed in later steps.
+- P1 fixed: UI controls now map to real backend operations and persistent state; no simulator data is used in production.
+- P2 fixed: legacy Qdrant/ArangoDB documents remain visible after the staged-workflow migration.
+- P2 fixed: legacy ArangoDB edges are included in the Knowledge Triples table; current production view shows 56 rows.
+- P2 fixed: five tabs overflow on narrow screens. Navigation and tables now scroll inside their own containers while the
+  document body remains exactly 390 px wide.
+- Intentional deviation: model/configuration controls from the DGX app are omitted because this Raspberry Pi stack owns
+  its models through environment configuration and should not pretend they can be changed per request.
 
-## Interactions tested
+## Functional verification
 
-- Opened the 圖譜 tab and loaded graph data.
-- Switched force → tree layout and verified active-state change.
-- Searched for `Raspberry` and verified the matching node highlight state.
-- Increased zoom from 100% to 115%.
-- Verified desktop and 390 px responsive layouts.
-- Browser console errors: none.
-- `npm run build`: passed.
-- `npm run lint`: passed.
+- All five primary tabs opened successfully.
+- Process Documents switched to Embeddings and rendered real document state.
+- Knowledge Triples loaded 56 stored ArangoDB triples.
+- Graph Search selection updated and the existing RAG form remained available.
+- Test document upload returned `chunk_count: 0`, `embeddings_ready: false`, `triples_ready: false`, proving staged upload.
+- The same test document downloaded byte-for-byte and was then removed.
+- Desktop browser console errors: none.
+- 390 px body overflow: none (`body.scrollWidth = viewport = 390`).
+- Frontend `npm run build` and `npm run lint`: passed.
+- Backend Python compilation and `git diff --check`: passed. Local pytest package was unavailable; runtime API smoke tests
+  and Docker startup covered the changed paths.
+- Backend and frontend containers: running.
 
 final result: passed

@@ -1,19 +1,22 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from .clients import ServiceError, chunk, embed, extract_triples, generate, rerank
 from .config import get_settings
+from .documents import DocumentRegistry
 from .graph import KnowledgeGraphStore
 from .memory import ConversationMemory
 from .retrieval import bm25_search, needs_query_rewrite, reciprocal_rank_fusion
 from .schemas import (Citation, ConversationMessage, ConversationResponse, DocumentList, DocumentSummary,
-                      KnowledgeGraph, QueryRequest, QueryResponse)
+                      KnowledgeGraph, ProcessRequest, QueryRequest, QueryResponse, TripleItem)
 from .store import VectorStore
 from .text_files import decode_text
 
@@ -27,6 +30,7 @@ graph_store = KnowledgeGraphStore(
     settings.arangodb_username,
     settings.arangodb_password,
 )
+documents = DocumentRegistry(settings.document_db_path, settings.upload_dir)
 
 
 @asynccontextmanager
@@ -81,41 +85,104 @@ async def upload_document(file: UploadFile = File(...)):
     if len(content) > max_bytes:
         raise HTTPException(413, f"檔案不可超過 {settings.max_upload_mb} MB")
     filename = file.filename or "unnamed.txt"
-    text = decode_text(filename, content)
-    chunks = await chunk(settings.chunking_url, text)
-    vectors: list[list[float]] = []
-    for start in range(0, len(chunks), 16):
-        vectors.extend(await embed(settings.ollama_base_url, settings.ollama_embed_model,
-                                   [item["text"] for item in chunks[start:start + 16]]))
+    decode_text(filename, content)
     document_id = str(uuid4())
-    await store.add_document(document_id, filename, len(content), chunks, vectors)
-    triple_count = 0
-    if settings.graph_extraction_enabled:
-        triples: list[dict] = []
-        batch_size = max(1, settings.graph_batch_chunks)
-        try:
-            for start in range(0, len(chunks), batch_size):
-                batch = chunks[start:start + batch_size]
-                batch_text = "\n\n".join(str(item["text"]) for item in batch)
-                triples.extend(await extract_triples(
-                    settings.ollama_base_url,
-                    settings.ollama_chat_model,
-                    batch_text,
-                    int(batch[0]["index"]),
-                ))
-            triple_count = await asyncio.to_thread(graph_store.replace_document, document_id, filename, triples)
-        except ServiceError as exc:
-            logger.warning("Knowledge graph extraction failed for %s: %s", filename, exc)
-    return DocumentSummary(document_id=document_id, filename=filename, size=len(content),
-                           chunk_count=len(chunks), graph_triple_count=triple_count)
+    item = await asyncio.to_thread(documents.add, document_id, filename, content)
+    return DocumentSummary(**item)
 
 
 @app.get("/api/documents", response_model=DocumentList)
 async def list_documents():
     graph_counts = await asyncio.to_thread(graph_store.document_counts)
-    documents = [DocumentSummary(**item, graph_triple_count=graph_counts.get(item["document_id"], 0))
-                 for item in await store.list_documents()]
-    return DocumentList(documents=documents, total_chunks=sum(item.chunk_count for item in documents))
+    staged = await asyncio.to_thread(documents.list)
+    staged_ids = {item["document_id"] for item in staged}
+    legacy = [{**item, "embeddings_ready": True, "triples_ready": graph_counts.get(item["document_id"], 0) > 0,
+               "graph_stored": graph_counts.get(item["document_id"], 0) > 0,
+               "graph_triple_count": graph_counts.get(item["document_id"], 0)}
+              for item in await store.list_documents() if item["document_id"] not in staged_ids]
+    items = [DocumentSummary(**item) for item in [*staged, *legacy]]
+    return DocumentList(documents=items, total_chunks=sum(item.chunk_count for item in items))
+
+
+async def document_chunks(document_id: str) -> tuple[dict, list[dict]]:
+    try:
+        item = await asyncio.to_thread(documents.get, document_id)
+    except KeyError as exc:
+        raise HTTPException(404, "找不到原始文件；舊版已處理文件不可重新處理") from exc
+    chunks = item["chunks"]
+    if not chunks:
+        content = await asyncio.to_thread(Path(item["path"]).read_bytes)
+        chunks = await chunk(settings.chunking_url, decode_text(item["filename"], content))
+        await asyncio.to_thread(documents.update_chunks, document_id, chunks)
+    return item, chunks
+
+
+@app.post("/api/documents/process", response_model=DocumentList)
+async def process_documents(request: ProcessRequest):
+    for document_id in request.document_ids:
+        item, chunks = await document_chunks(document_id)
+        if request.mode == "embeddings":
+            vectors: list[list[float]] = []
+            for start in range(0, len(chunks), 16):
+                vectors.extend(await embed(settings.ollama_base_url, settings.ollama_embed_model,
+                                           [chunk_item["text"] for chunk_item in chunks[start:start + 16]]))
+            await store.delete_document(document_id)
+            await store.add_document(document_id, item["filename"], item["size"], chunks, vectors)
+            await asyncio.to_thread(documents.update_processing, document_id, embeddings_ready=True)
+        else:
+            triples: list[dict] = []
+            batch_size = max(1, settings.graph_batch_chunks)
+            for start in range(0, len(chunks), batch_size):
+                batch = chunks[start:start + batch_size]
+                triples.extend(await extract_triples(
+                    settings.ollama_base_url, settings.ollama_chat_model,
+                    "\n\n".join(str(chunk_item["text"]) for chunk_item in batch), int(batch[0]["index"]),
+                ))
+            await asyncio.to_thread(documents.update_processing, document_id, triples=triples)
+    return await list_documents()
+
+
+@app.get("/api/documents/{document_id}/download")
+async def download_document(document_id: str):
+    try:
+        item = await asyncio.to_thread(documents.get, document_id)
+    except KeyError as exc:
+        raise HTTPException(404, "這是舊版索引，沒有保留可下載的原始檔") from exc
+    return FileResponse(item["path"], filename=item["filename"], media_type="application/octet-stream")
+
+
+@app.get("/api/triples", response_model=list[TripleItem])
+async def list_triples():
+    items: list[TripleItem] = []
+    staged_documents = await asyncio.to_thread(documents.list)
+    staged_ids = {document["document_id"] for document in staged_documents}
+    for document in staged_documents:
+        for index, triple in enumerate(document["triples"]):
+            items.append(TripleItem(
+                id=f'{document["document_id"]}-{index}', document_id=document["document_id"],
+                filename=document["filename"], subject=str(triple["subject"]), predicate=str(triple["predicate"]),
+                object=str(triple["object"]), chunk_index=int(triple.get("chunk_index", 0)),
+                stored=document["graph_stored"],
+            ))
+    graph = await asyncio.to_thread(graph_store.graph)
+    labels = {node["id"]: node["label"] for node in graph["nodes"]}
+    items.extend(TripleItem(
+        id=edge["id"], document_id=edge["document_id"], filename=edge["filename"],
+        subject=labels.get(edge["source"], edge["source"]), predicate=edge["predicate"],
+        object=labels.get(edge["target"], edge["target"]), chunk_index=edge["chunk_index"], stored=True,
+    ) for edge in graph["edges"] if edge["document_id"] not in staged_ids)
+    return items
+
+
+@app.post("/api/triples/store")
+async def store_triples():
+    stored = 0
+    for document in await asyncio.to_thread(documents.list):
+        if document["triples_ready"] and not document["graph_stored"]:
+            stored += await asyncio.to_thread(graph_store.replace_document, document["document_id"],
+                                               document["filename"], document["triples"])
+            await asyncio.to_thread(documents.mark_graph_stored, document["document_id"])
+    return {"stored": stored}
 
 
 @app.delete("/api/documents/{document_id}", status_code=204)
@@ -123,6 +190,7 @@ async def delete_document(document_id: str):
     await asyncio.gather(
         store.delete_document(document_id),
         asyncio.to_thread(graph_store.delete_document, document_id),
+        asyncio.to_thread(documents.delete, document_id),
     )
 
 
@@ -206,6 +274,20 @@ async def query(request: QueryRequest):
         for index, item in enumerate(ranked, start=1)
     ]
     context = await build_context(citations, lookup, ranked)
+    if request.search_mode == "graph":
+        graph = await asyncio.to_thread(graph_store.graph)
+        terms = {term.casefold() for term in retrieval_query.split() if len(term) > 1}
+        labels = {node["id"]: node["label"] for node in graph["nodes"]}
+        matching_edges = [edge for edge in graph["edges"] if any(
+            term in f'{labels.get(edge["source"], "")} {edge["predicate"]} {labels.get(edge["target"], "")}'.casefold()
+            for term in terms
+        )][:20]
+        if matching_edges:
+            graph_context = "\n".join(
+                f'- {labels.get(edge["source"], edge["source"])} — {edge["predicate"]} → '
+                f'{labels.get(edge["target"], edge["target"])}' for edge in matching_edges
+            )
+            context = f"{context}\n\n知識圖譜關係：\n{graph_context}"
     language_rule = "請一律使用繁體中文回答。" if request.language == "zh-Hant" else "請跟隨使用者問題的語言回答。"
     messages = [
         {"role": "system",

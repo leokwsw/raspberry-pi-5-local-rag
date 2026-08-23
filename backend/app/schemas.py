@@ -9,6 +9,7 @@ class QueryRequest(BaseModel):
     depth: Literal["quick", "standard", "deep"] = "standard"
     session_id: str | None = Field(default=None, min_length=1, max_length=64)
     document_ids: list[str] = Field(default_factory=list, max_length=50)
+    search_mode: Literal["pure", "graph"] = "pure"
 
 
 class Citation(BaseModel):
@@ -42,6 +43,25 @@ class DocumentSummary(BaseModel):
     size: int
     chunk_count: int
     graph_triple_count: int = 0
+    embeddings_ready: bool = False
+    triples_ready: bool = False
+    graph_stored: bool = False
+
+
+class ProcessRequest(BaseModel):
+    document_ids: list[str] = Field(min_length=1, max_length=50)
+    mode: Literal["embeddings", "triples"]
+
+
+class TripleItem(BaseModel):
+    id: str
+    subject: str
+    predicate: str
+    object: str
+    document_id: str
+    filename: str
+    chunk_index: int
+    stored: bool
 
 
 class DocumentList(BaseModel):

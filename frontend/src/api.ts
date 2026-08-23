@@ -4,6 +4,9 @@ export type DocumentItem = {
     size: number;
     chunk_count: number;
     graph_triple_count: number;
+    embeddings_ready: boolean;
+    triples_ready: boolean;
+    graph_stored: boolean;
 }
 export type Citation = { index: number; filename: string; chunk_index: number; score: number; text: string }
 export type QueryResult = { answer: string; citations: Citation[]; session_id: string; rewritten_query?: string | null }
@@ -20,17 +23,24 @@ export type GraphEdge = {
     chunk_index: number;
 }
 export type KnowledgeGraph = { nodes: GraphNode[]; edges: GraphEdge[] }
+export type TripleItem = {
+    id: string; subject: string; predicate: string; object: string; document_id: string;
+    filename: string; chunk_index: number; stored: boolean;
+}
 
 const demoMode = import.meta.env.VITE_DEMO === 'true'
 const demoDocuments: DocumentItem[] = [
-    {document_id: 'demo-1', filename: '部署筆記.md', size: 12800, chunk_count: 34, graph_triple_count: 3},
-    {document_id: 'demo-2', filename: '硬件設定.txt', size: 8400, chunk_count: 18, graph_triple_count: 2},
+    {document_id: 'demo-1', filename: '部署筆記.md', size: 12800, chunk_count: 34, graph_triple_count: 3, embeddings_ready: true, triples_ready: true, graph_stored: true},
+    {document_id: 'demo-2', filename: '硬件設定.txt', size: 8400, chunk_count: 18, graph_triple_count: 2, embeddings_ready: true, triples_ready: true, graph_stored: false},
     ...Array.from({length: 10}, (_, index) => ({
         document_id: `demo-${index + 3}`,
         filename: `知識文件-${index + 3}.txt`,
         size: 4096,
         chunk_count: 12,
         graph_triple_count: 0,
+        embeddings_ready: false,
+        triples_ready: false,
+        graph_stored: false,
     })),
 ]
 
@@ -66,7 +76,7 @@ export const api = {
             {id: '3', source: 'ollama', target: 'qdrant', predicate: '提供向量給', document_id: 'demo-2', filename: '硬件設定.txt', chunk_index: 4},
         ],
     } satisfies KnowledgeGraph) : request<KnowledgeGraph>('/api/graph'),
-    query: (body: { question: string; language: string; depth: string; session_id?: string; document_ids?: string[] }) => demoMode ? Promise.resolve({
+    query: (body: { question: string; language: string; depth: string; search_mode: 'pure' | 'graph'; session_id?: string; document_ids?: string[] }) => demoMode ? Promise.resolve({
         answer: '在 Raspberry Pi 5 上執行本機 RAG 服務，建議使用至少 8GB RAM，並配備高速 microSD（A2 或以上）或 SSD 以存放向量資料庫與模型檔案。[1] 啟用 64 位元作業系統、開啟 PCIe Gen 3，可獲得更好的 I/O 與整體效能。[2]',
         citations: [
             {
@@ -96,6 +106,15 @@ export const api = {
         return request<DocumentItem>('/api/documents', {method: 'POST', body})
     },
     remove: (id: string) => request<void>(`/api/documents/${id}`, {method: 'DELETE'}),
+    process: (documentIds: string[], mode: 'embeddings' | 'triples') => request<{documents: DocumentItem[]; total_chunks: number}>('/api/documents/process', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({document_ids: documentIds, mode}),
+    }),
+    triples: () => demoMode ? Promise.resolve([
+        {id: 't1', subject: 'Raspberry Pi 5', predicate: '執行', object: 'Ollama', document_id: 'demo-1', filename: '部署筆記.md', chunk_index: 7, stored: true},
+        {id: 't2', subject: 'Ollama', predicate: '提供向量給', object: 'Qdrant', document_id: 'demo-2', filename: '硬件設定.txt', chunk_index: 4, stored: false},
+    ] satisfies TripleItem[]) : request<TripleItem[]>('/api/triples'),
+    storeTriples: () => request<{stored: number}>('/api/triples/store', {method: 'POST'}),
+    downloadUrl: (id: string) => `/api/documents/${id}/download`,
     conversation: (id: string) => request<{ session_id: string; messages: ConversationMessage[] }>(`/api/conversations/${id}`),
     clearConversation: (id: string) => request<void>(`/api/conversations/${id}`, {method: 'DELETE'}),
 }
