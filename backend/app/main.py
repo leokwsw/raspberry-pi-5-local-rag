@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -6,18 +7,21 @@ import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from .clients import ServiceError, chunk, embed, generate, rerank
+from .clients import ServiceError, chunk, embed, extract_triples, generate, rerank
 from .config import get_settings
+from .graph import KnowledgeGraphStore
 from .memory import ConversationMemory
 from .retrieval import bm25_search, needs_query_rewrite, reciprocal_rank_fusion
 from .schemas import (Citation, ConversationMessage, ConversationResponse, DocumentList, DocumentSummary,
-                      QueryRequest, QueryResponse)
+                      KnowledgeGraph, QueryRequest, QueryResponse)
 from .store import VectorStore
 from .text_files import decode_text
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 store = VectorStore(settings.qdrant_url, settings.qdrant_collection)
 memory = ConversationMemory(settings.memory_db_path, settings.memory_max_messages)
+graph_store = KnowledgeGraphStore(settings.graph_db_path)
 
 
 @asynccontextmanager
@@ -77,18 +81,46 @@ async def upload_document(file: UploadFile = File(...)):
                                    [item["text"] for item in chunks[start:start + 16]]))
     document_id = str(uuid4())
     await store.add_document(document_id, filename, len(content), chunks, vectors)
-    return DocumentSummary(document_id=document_id, filename=filename, size=len(content), chunk_count=len(chunks))
+    triple_count = 0
+    if settings.graph_extraction_enabled:
+        triples: list[dict] = []
+        batch_size = max(1, settings.graph_batch_chunks)
+        try:
+            for start in range(0, len(chunks), batch_size):
+                batch = chunks[start:start + batch_size]
+                batch_text = "\n\n".join(str(item["text"]) for item in batch)
+                triples.extend(await extract_triples(
+                    settings.ollama_base_url,
+                    settings.ollama_chat_model,
+                    batch_text,
+                    int(batch[0]["index"]),
+                ))
+            triple_count = await asyncio.to_thread(graph_store.replace_document, document_id, filename, triples)
+        except ServiceError as exc:
+            logger.warning("Knowledge graph extraction failed for %s: %s", filename, exc)
+    return DocumentSummary(document_id=document_id, filename=filename, size=len(content),
+                           chunk_count=len(chunks), graph_triple_count=triple_count)
 
 
 @app.get("/api/documents", response_model=DocumentList)
 async def list_documents():
-    documents = [DocumentSummary(**item) for item in await store.list_documents()]
+    graph_counts = await asyncio.to_thread(graph_store.document_counts)
+    documents = [DocumentSummary(**item, graph_triple_count=graph_counts.get(item["document_id"], 0))
+                 for item in await store.list_documents()]
     return DocumentList(documents=documents, total_chunks=sum(item.chunk_count for item in documents))
 
 
 @app.delete("/api/documents/{document_id}", status_code=204)
 async def delete_document(document_id: str):
-    await store.delete_document(document_id)
+    await asyncio.gather(
+        store.delete_document(document_id),
+        asyncio.to_thread(graph_store.delete_document, document_id),
+    )
+
+
+@app.get("/api/graph", response_model=KnowledgeGraph)
+async def knowledge_graph(document_id: str | None = None):
+    return await asyncio.to_thread(graph_store.graph, document_id)
 
 
 @app.get("/api/conversations/{session_id}", response_model=ConversationResponse)

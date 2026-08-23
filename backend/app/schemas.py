@@ -41,8 +41,29 @@ class DocumentSummary(BaseModel):
     filename: str
     size: int
     chunk_count: int
+    graph_triple_count: int = 0
 
 
 class DocumentList(BaseModel):
     documents: list[DocumentSummary]
     total_chunks: int
+
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    predicate: str
+    document_id: str
+    filename: str
+    chunk_index: int
+
+
+class KnowledgeGraph(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]

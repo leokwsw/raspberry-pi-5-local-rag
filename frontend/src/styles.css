@@ -390,11 +390,122 @@ textarea:disabled, select:disabled {
 
 .document-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
     gap: 12px;
     align-items: center;
     padding: 11px 14px;
     font-size: .88rem;
+}
+
+.graph-state, .graph-empty {
+    color: #6d705f;
+}
+
+.graph-empty {
+    display: flex;
+    min-height: 300px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 9px;
+    text-align: center;
+}
+
+.graph-empty strong {
+    color: #20230f;
+}
+
+.graph-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.graph-heading h2, .graph-heading p {
+    margin: 0;
+}
+
+.graph-heading p, .graph-heading > span {
+    margin-top: 4px;
+    color: #6d705f;
+    font-size: .84rem;
+}
+
+.graph-canvas {
+    overflow: hidden;
+    border: 1px solid #dcdecf;
+    border-radius: 12px;
+    background: #f9faee;
+}
+
+.graph-canvas svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 360px;
+}
+
+.graph-edge line {
+    stroke: #a9ac98;
+    stroke-width: 1.5;
+    marker-end: url(#graph-arrow);
+}
+
+.graph-edge text {
+    fill: #6d705f;
+    font-size: 9px;
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke: #f9faee;
+    stroke-width: 4px;
+}
+
+#graph-arrow path {
+    fill: #8e927d;
+}
+
+.graph-node circle {
+    fill: #e9f45b;
+    stroke: #8f9924;
+    stroke-width: 1.5;
+}
+
+.graph-node text {
+    fill: #20230f;
+    font-size: 11px;
+    font-weight: 700;
+    text-anchor: middle;
+}
+
+.triple-list {
+    margin-top: 16px;
+    overflow: hidden;
+    border: 1px solid #dcdecf;
+    border-radius: 10px;
+}
+
+.triple-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(120px, auto);
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    font-size: .85rem;
+}
+
+.triple-row + .triple-row {
+    border-top: 1px solid #e4e5d9;
+}
+
+.triple-row strong {
+    color: #657000;
+}
+
+.triple-row small {
+    color: #6d705f;
+    text-align: right;
 }
 
 .document-name {
@@ -460,6 +571,27 @@ textarea:disabled, select:disabled {
 
     .document-row {
         grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+
+    .document-row > :nth-child(5) {
+        display: none;
+    }
+
+    .graph-heading {
+        align-items: start;
+        flex-direction: column;
+    }
+
+    .graph-canvas svg {
+        min-height: 280px;
+    }
+
+    .triple-row {
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    }
+
+    .triple-row small {
+        display: none;
     }
 
     .document-row > :nth-child(3), .document-row > :nth-child(4) {

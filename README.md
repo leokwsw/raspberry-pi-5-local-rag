@@ -64,9 +64,13 @@ python scripts/import-folder.py /home/pi/knowledge --recursive
 - `GET /api/documents`：列出文件及區塊數
 - `DELETE /api/documents/{id}`：刪除文件所有向量
 - `POST /api/query`：`question`、`language`（`zh-Hant`/`follow`）、`depth`
+- `GET /api/graph`：列出由文件自動抽取的知識實體與三元組；可用 `document_id` 篩選
 - `GET /api/health`：Ollama、Qdrant、reranker、chunker 狀態
 
 ## 資源建議
 
 Ollama 與 reranker 不要同時配置過高 parallelism。Pi 5 16GB 建議 Ollama `OLLAMA_NUM_PARALLEL=1`，Qdrant 使用單一
 replica；大量文件匯入時以 16 個 chunk 一批呼叫 embedding。模型檔與 Qdrant volume 最好放在 USB 3 SSD / NVMe，而不是 microSD。
+
+上載文件時會使用現有 chat model，每四個 chunk 一批抽取知識三元組並寫入輕量 SQLite。可透過
+`GRAPH_EXTRACTION_ENABLED=false` 關閉，或調整 `GRAPH_BATCH_CHUNKS` 平衡抽取品質與 Pi 上的處理時間。

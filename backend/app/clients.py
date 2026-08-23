@@ -1,3 +1,4 @@
+import json
 import re
 from collections.abc import Sequence
 
@@ -62,3 +63,58 @@ async def generate(base_url: str, model: str, messages: list[dict]) -> str:
     )
     content = data.get("message", {}).get("content", "")
     return strip_thinking_output(content) if isinstance(content, str) else ""
+
+
+def parse_triples(content: str, chunk_index: int, limit: int = 40) -> list[dict]:
+    """Parse and validate a compact Ollama JSON triple response."""
+    cleaned = strip_thinking_output(content).strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.IGNORECASE)
+    try:
+        payload = json.loads(cleaned)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    raw_triples = payload.get("triples", []) if isinstance(payload, dict) else []
+    if not isinstance(raw_triples, list):
+        return []
+    triples: list[dict] = []
+    for item in raw_triples[:limit]:
+        if not isinstance(item, dict):
+            continue
+        subject = str(item.get("subject", "")).strip()[:200]
+        predicate = str(item.get("predicate", "")).strip()[:200]
+        object_value = str(item.get("object", "")).strip()[:200]
+        if subject and predicate and object_value and subject.casefold() != object_value.casefold():
+            triples.append({
+                "subject": subject,
+                "predicate": predicate,
+                "object": object_value,
+                "chunk_index": chunk_index,
+            })
+    return triples
+
+
+async def extract_triples(base_url: str, model: str, text: str, chunk_index: int) -> list[dict]:
+    data = await post_json(
+        f"{base_url.rstrip('/')}/api/chat",
+        {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "從內容抽取明確、可驗證的知識三元組。只輸出 JSON："
+                        '{"triples":[{"subject":"實體","predicate":"關係","object":"實體或值"}]}。'
+                        "不可加入內容沒有陳述的知識；沒有三元組時輸出空陣列。"
+                    ),
+                },
+                {"role": "user", "content": f"內容：\n{text}\n\n/no_think"},
+            ],
+            "stream": False,
+            "think": False,
+            "format": "json",
+        },
+        timeout=300.0,
+    )
+    content = data.get("message", {}).get("content", "")
+    return parse_triples(content, chunk_index) if isinstance(content, str) else []
