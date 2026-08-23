@@ -30,6 +30,7 @@ Co-authored-by: Codex <codex@openai.com>
 - `chunking-service/`：只負責文字 chunking
 - `reranker-service/`：只負責 Qwen3 reranking
 - `scripts/`：操作正式 REST API 的工具
+- `start.sh`／`stop.sh`：安全啟停 Compose stack；不得在 stop script 加入預設刪除 volumes 的行為
 - `tests/`：backend 純邏輯及儲存層測試
 
 不要把 Ollama 加入 Compose；它預期在 Raspberry Pi host 上執行，由 container 使用 `host.docker.internal` 連接。

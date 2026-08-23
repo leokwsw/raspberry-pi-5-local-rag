@@ -128,7 +128,18 @@ ARANGODB_PASSWORD=replace-with-a-strong-password
 4. 啟動：
 
 ```bash
-docker compose up --build -d
+./start.sh
+```
+
+`start.sh` 會檢查 Docker、Compose、`.env`、ArangoDB 密碼及 host Ollama，預設重新 build 並等待 API ready。
+
+常用選項：
+
+```bash
+./start.sh --no-build
+./start.sh --pull
+./start.sh --no-wait
+./start.sh --help
 ```
 
 首次啟動 reranker 會下載 `Qwen/Qwen3-Reranker-0.6B`，在 Raspberry Pi 上可能需要數分鐘。
@@ -138,6 +149,14 @@ docker compose up --build -d
 - UI：`http://raspberrypi.local:3000`
 - Backend API docs：`http://raspberrypi.local:8080/docs`
 - Qdrant：`http://raspberrypi.local:6333`
+
+停止服務但保留所有資料：
+
+```bash
+./stop.sh
+```
+
+`stop.sh` 不會停止 host Ollama，亦不會刪除任何 Docker volume。
 
 ## 環境設定
 
