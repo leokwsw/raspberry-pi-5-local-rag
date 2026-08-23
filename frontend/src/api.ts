@@ -109,7 +109,7 @@ export const api = {
             {id: '3', source: 'ollama', target: 'qdrant', predicate: '提供向量給', document_id: 'demo-2', filename: '硬件設定.txt', chunk_index: 4},
         ],
     } satisfies KnowledgeGraph) : request<KnowledgeGraph>('/api/graph'),
-    query: (body: { question: string; language: string; depth: string; search_mode: 'pure' | 'graph'; session_id?: string; document_ids?: string[] }) => demoMode ? Promise.resolve({
+    query: (body: { question: string; language: string; depth: string; search_mode: 'pure' | 'graph'; chat_model?: string; session_id?: string; document_ids?: string[] }) => demoMode ? Promise.resolve({
         answer: '在 Raspberry Pi 5 上執行本機 RAG 服務，建議使用至少 8GB RAM，並配備高速 microSD（A2 或以上）或 SSD 以存放向量資料庫與模型檔案。[1] 啟用 64 位元作業系統、開啟 PCIe Gen 3，可獲得更好的 I/O 與整體效能。[2]',
         citations: [
             {

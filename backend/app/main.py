@@ -272,11 +272,11 @@ async def clear_conversation(session_id: str):
     await asyncio.to_thread(memory.clear, session_id)
 
 
-async def rewrite_question(question: str, history: list[dict]) -> str:
+async def rewrite_question(question: str, history: list[dict], chat_model: str) -> str:
     if not needs_query_rewrite(question, bool(history)):
         return question
     transcript = "\n".join(f"{item['role']}: {item['content']}" for item in history[-4:])
-    rewritten = await generate(settings.ollama_base_url, settings.ollama_chat_model, [
+    rewritten = await generate(settings.ollama_base_url, chat_model, [
         {"role": "system", "content": "把追問改寫成可獨立檢索的問題。只輸出改寫後問題，不回答。"},
         {"role": "user", "content": f"對話：\n{transcript}\n\n追問：{question}\n\n/no_think"},
     ])
@@ -302,9 +302,18 @@ async def build_context(citations: list[Citation], lookup: dict[str, dict], rank
 
 @app.post("/api/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
+    chat_model = settings.ollama_chat_model
+    if request.chat_model:
+        try:
+            installed_names = {item["name"] for item in await installed_ollama_models()}
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(503, "無法驗證 Ollama 模型") from exc
+        if request.chat_model not in installed_names:
+            raise HTTPException(400, "所選 Ollama 模型未安裝")
+        chat_model = request.chat_model
     session_id = request.session_id or memory.new_session_id()
     history = await asyncio.to_thread(memory.recent, session_id)
-    retrieval_query = await rewrite_question(request.question, history)
+    retrieval_query = await rewrite_question(request.question, history, chat_model)
     vector = (await embed(settings.ollama_base_url, settings.ollama_embed_model, [retrieval_query]))[0]
     multiplier = {"quick": 0.5, "standard": 1.0, "deep": 1.5}[request.depth]
     candidate_limit = max(5, int(settings.retrieval_limit * multiplier))
@@ -357,7 +366,7 @@ async def query(request: QueryRequest):
         *history[-6:],
         {"role": "user", "content": f"問題：{request.question}\n\n可用內容：\n{context}\n\n/no_think"},
     ]
-    answer = await generate(settings.ollama_base_url, settings.ollama_chat_model, messages)
+    answer = await generate(settings.ollama_base_url, chat_model, messages)
     answer = answer or "模型沒有產生答案。"
     await asyncio.to_thread(memory.append_exchange, session_id, request.question, answer)
     return QueryResponse(answer=answer, citations=citations, session_id=session_id,

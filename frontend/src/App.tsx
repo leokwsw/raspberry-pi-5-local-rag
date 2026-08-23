@@ -1,5 +1,5 @@
-import {FormEvent, useCallback, useEffect, useState} from 'react'
-import {ArrowSquareOut, FileText} from '@phosphor-icons/react'
+import {FormEvent, useCallback, useEffect, useMemo, useState} from 'react'
+import {ArrowSquareOut, Cpu, FileText} from '@phosphor-icons/react'
 import {api, type Citation, type DocumentItem, type Health, type KnowledgeGraph, type OllamaModel, type QueryResult, type SystemOverview} from './api'
 import {KnowledgeGraphPanel} from './KnowledgeGraphPanel'
 import {ProcessPanel, TriplesPanel, UploadPanel} from './WorkflowPanels'
@@ -37,20 +37,31 @@ function Sources({citations}: { citations: Citation[] }) {
     </section>
 }
 
-function ChatPanel({documents, totalChunks, onLoadingChange}: {
+function ChatPanel({documents, totalChunks, models, defaultModel, onLoadingChange}: {
     documents: DocumentItem[];
     totalChunks: number;
+    models: OllamaModel[];
+    defaultModel: string;
     onLoadingChange: (loading: boolean) => void;
 }) {
     const [question, setQuestion] = useState('')
     const [language, setLanguage] = useState('zh-Hant')
     const [depth, setDepth] = useState('standard')
     const [searchMode, setSearchMode] = useState<'pure' | 'graph'>('pure')
+    const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('local-rag-search-model') || '')
     const [documentScope, setDocumentScope] = useState('all')
     const [sessionId, setSessionId] = useState(() => localStorage.getItem('local-rag-session') || '')
     const [entries, setEntries] = useState<ChatEntry[]>([])
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
+    const chatModels = useMemo(() => models.filter(model => !model.name.toLowerCase().includes('embed')), [models])
+
+    useEffect(() => {
+        if (!chatModels.length || chatModels.some(model => model.name === selectedModel)) return
+        const fallbackModel = chatModels.find(model => model.name === defaultModel)?.name || chatModels[0].name
+        setSelectedModel(fallbackModel)
+        localStorage.setItem('local-rag-search-model', fallbackModel)
+    }, [chatModels, defaultModel, selectedModel])
 
     useEffect(() => {
         if (!sessionId) return
@@ -75,6 +86,7 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
                 language,
                 depth,
                 search_mode: searchMode,
+                chat_model: selectedModel || undefined,
                 session_id: sessionId || undefined,
                 document_ids: documentScope === 'all' ? [] : [documentScope],
             })
@@ -107,6 +119,17 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
         <div className="rag-mode-switch" role="radiogroup" aria-label="搜尋模式"><button role="radio" aria-checked={searchMode === 'pure'} onClick={() => setSearchMode('pure')}>
             <strong>Pure RAG</strong><span>只以 Qdrant 文件內容檢索</span></button><button role="radio" aria-checked={searchMode === 'graph'} onClick={() => setSearchMode('graph')}>
             <strong>Graph Search</strong><span>結合 ArangoDB 實體關係</span></button></div>
+        <div className="rag-model-bar">
+            <div className="rag-model-heading"><Cpu size={19}/><div><label htmlFor="rag-chat-model">回答模型</label><span>從 Ollama 已安裝的生成模型選擇</span></div></div>
+            <select id="rag-chat-model" value={selectedModel} disabled={loading || chatModels.length === 0}
+                    onChange={event => {
+                        setSelectedModel(event.target.value)
+                        localStorage.setItem('local-rag-search-model', event.target.value)
+                    }}>
+                {chatModels.length === 0 ? <option value="">未找到生成模型</option> : chatModels.map(model =>
+                    <option key={model.name} value={model.name}>{model.name} · {(model.size / 1_000_000_000).toFixed(1)} GB</option>)}
+            </select>
+        </div>
         <div className="chat-toolbar"><div className="library-meta"><FileText size={18}/>{documents.length} 個文件
             · {totalChunks.toLocaleString('zh-Hant')} 個區塊 · 剛剛同步
         </div><button type="button" className="secondary-button" disabled={loading || entries.length === 0}
@@ -143,7 +166,7 @@ function ChatPanel({documents, totalChunks, onLoadingChange}: {
                 </select></div>
             </div>
             <button className="primary"
-                    disabled={loading || !question.trim()}>{loading && <span className="button-spinner" aria-hidden="true"/>}
+                    disabled={loading || !question.trim() || !selectedModel}>{loading && <span className="button-spinner" aria-hidden="true"/>}
                 {loading ? '正在生成答案…' : '取得答案'}</button>
         </form>
         {error && <p className="error" role="alert">{error}</p>}
@@ -192,6 +215,7 @@ export function App() {
                 tab === 'process' ? <ProcessPanel documents={documents} overview={overview} models={models} refresh={refresh}/> :
                 tab === 'triples' ? <TriplesPanel refreshDocuments={refresh}/> :
                 tab === 'graph' ? <KnowledgeGraphPanel graph={graph} loading={graphLoading} error={graphError}/> :
-                <ChatPanel documents={documents} totalChunks={totalChunks} onLoadingChange={setQueryLoading}/>}<Status health={health}/></section>
+                <ChatPanel documents={documents} totalChunks={totalChunks} models={models}
+                           defaultModel={overview?.chat_model || ''} onLoadingChange={setQueryLoading}/>}<Status health={health}/></section>
     </main>
 }
