@@ -55,6 +55,12 @@ class ProcessRequest(BaseModel):
     chunk_size: int | None = Field(default=None, ge=200, le=4000)
     chunk_overlap: int | None = Field(default=None, ge=0, le=1000)
     batch_chunks: int | None = Field(default=None, ge=1, le=16)
+    chat_model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class OllamaModel(BaseModel):
+    name: str
+    size: int = 0
 
 
 class TripleItem(BaseModel):
@@ -91,3 +97,18 @@ class GraphEdge(BaseModel):
 class KnowledgeGraph(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+class SystemOverview(BaseModel):
+    chat_model: str
+    embedding_model: str
+    documents_ready: int
+    arangodb_connected: bool
+    arangodb_url: str
+    arangodb_database: str
+    graph_nodes: int
+    graph_relationships: int
+    qdrant_connected: bool
+    qdrant_url: str
+    qdrant_collection: str
+    vector_count: int

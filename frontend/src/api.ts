@@ -23,6 +23,20 @@ export type GraphEdge = {
     chunk_index: number;
 }
 export type KnowledgeGraph = { nodes: GraphNode[]; edges: GraphEdge[] }
+export type SystemOverview = {
+    chat_model: string;
+    embedding_model: string;
+    documents_ready: number;
+    arangodb_connected: boolean;
+    arangodb_url: string;
+    arangodb_database: string;
+    graph_nodes: number;
+    graph_relationships: number;
+    qdrant_connected: boolean;
+    qdrant_url: string;
+    qdrant_collection: string;
+    vector_count: number;
+}
 export type TripleItem = {
     id: string; subject: string; predicate: string; object: string; document_id: string;
     filename: string; chunk_index: number; stored: boolean;
@@ -32,7 +46,9 @@ export type TripleExtractionConfig = {
     chunk_size: number;
     chunk_overlap: number;
     batch_chunks: number;
+    chat_model: string;
 }
+export type OllamaModel = {name: string; size: number}
 
 const demoMode = import.meta.env.VITE_DEMO === 'true'
 const demoDocuments: DocumentItem[] = [
@@ -65,6 +81,17 @@ export const api = {
         status: 'ok',
         services: {ollama: true, qdrant: true, arangodb: true, reranker: true, chunking: true}
     }) : request<Health>('/api/health'),
+    overview: () => demoMode ? Promise.resolve({
+        chat_model: 'qwen3:4b', embedding_model: 'qwen3-embedding:0.6b', documents_ready: 10,
+        arangodb_connected: true, arangodb_url: 'http://arangodb:8529', arangodb_database: 'local_rag_graph',
+        graph_nodes: 4, graph_relationships: 3,
+        qdrant_connected: true, qdrant_url: 'http://qdrant:6333', qdrant_collection: 'local_rag_chunks',
+        vector_count: 52,
+    } satisfies SystemOverview) : request<SystemOverview>('/api/overview'),
+    models: () => demoMode ? Promise.resolve([
+        {name: 'qwen3:4b', size: 2500000000}, {name: 'qwen3:1.7b', size: 1100000000},
+        {name: 'qwen3-embedding:0.6b', size: 600000000},
+    ] satisfies OllamaModel[]) : request<OllamaModel[]>('/api/models'),
     documents: () => demoMode ? Promise.resolve({documents: demoDocuments, total_chunks: 3846}) : request<{
         documents: DocumentItem[];
         total_chunks: number

@@ -16,7 +16,7 @@ from .graph import KnowledgeGraphStore
 from .memory import ConversationMemory
 from .retrieval import bm25_search, needs_query_rewrite, reciprocal_rank_fusion
 from .schemas import (Citation, ConversationMessage, ConversationResponse, DocumentList, DocumentSummary,
-                      KnowledgeGraph, ProcessRequest, QueryRequest, QueryResponse, TripleItem)
+                      KnowledgeGraph, OllamaModel, ProcessRequest, QueryRequest, QueryResponse, SystemOverview, TripleItem)
 from .store import VectorStore
 from .text_files import decode_text
 
@@ -78,6 +78,57 @@ async def health():
                          "reranker": reranker, "chunking": chunker}}
 
 
+async def vector_store_overview() -> dict:
+    try:
+        return await store.overview()
+    except Exception as exc:  # Qdrant client exposes several transport-specific exception types.
+        logger.warning("Unable to read Qdrant overview: %s", exc)
+        return {"connected": False, "vector_count": 0}
+
+
+@app.get("/api/overview", response_model=SystemOverview)
+async def system_overview():
+    document_list, graph, arangodb_connected, vector_overview = await asyncio.gather(
+        list_documents(),
+        asyncio.to_thread(graph_store.graph),
+        is_healthy(f"{settings.arangodb_url.rstrip('/')}/_api/version",
+                   (settings.arangodb_username, settings.arangodb_password)),
+        vector_store_overview(),
+    )
+    return SystemOverview(
+        chat_model=settings.ollama_chat_model,
+        embedding_model=settings.ollama_embed_model,
+        documents_ready=sum(not (item.embeddings_ready and item.triples_ready)
+                            for item in document_list.documents),
+        arangodb_connected=arangodb_connected,
+        arangodb_url=settings.arangodb_url,
+        arangodb_database=settings.arangodb_database,
+        graph_nodes=len(graph["nodes"]),
+        graph_relationships=len(graph["edges"]),
+        qdrant_connected=bool(vector_overview["connected"]),
+        qdrant_url=settings.qdrant_url,
+        qdrant_collection=settings.qdrant_collection,
+        vector_count=int(vector_overview["vector_count"]),
+    )
+
+
+async def installed_ollama_models() -> list[dict]:
+    async with httpx.AsyncClient(timeout=5) as client:
+        response = await client.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags")
+        response.raise_for_status()
+        models = response.json().get("models", [])
+    return [{"name": str(item.get("name", "")), "size": int(item.get("size", 0))}
+            for item in models if item.get("name")]
+
+
+@app.get("/api/models", response_model=list[OllamaModel])
+async def ollama_models():
+    try:
+        return [OllamaModel(**item) for item in await installed_ollama_models()]
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(503, "無法取得 Ollama 模型清單") from exc
+
+
 @app.post("/api/documents", response_model=DocumentSummary, status_code=201)
 async def upload_document(file: UploadFile = File(...)):
     max_bytes = settings.max_upload_mb * 1024 * 1024
@@ -120,6 +171,15 @@ async def document_chunks(document_id: str, chunk_size: int | None = None,
 
 @app.post("/api/documents/process", response_model=DocumentList)
 async def process_documents(request: ProcessRequest):
+    chat_model = settings.ollama_chat_model
+    if request.mode == "triples" and request.chat_model:
+        try:
+            installed_names = {item["name"] for item in await installed_ollama_models()}
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(503, "無法驗證 Ollama 模型") from exc
+        if request.chat_model not in installed_names:
+            raise HTTPException(400, "所選 Ollama 模型未安裝")
+        chat_model = request.chat_model
     for document_id in request.document_ids:
         item, chunks = await document_chunks(document_id, request.chunk_size, request.chunk_overlap)
         if request.mode == "embeddings":
@@ -136,7 +196,7 @@ async def process_documents(request: ProcessRequest):
             for start in range(0, len(chunks), batch_size):
                 batch = chunks[start:start + batch_size]
                 triples.extend(await extract_triples(
-                    settings.ollama_base_url, settings.ollama_chat_model,
+                    settings.ollama_base_url, chat_model,
                     "\n\n".join(str(chunk_item["text"]) for chunk_item in batch), int(batch[0]["index"]),
                     request.system_prompt,
                 ))

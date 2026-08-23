@@ -15,6 +15,12 @@ class VectorStore:
                 vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
             )
 
+    async def overview(self) -> dict:
+        if not await self.client.collection_exists(self.collection):
+            return {"connected": True, "vector_count": 0}
+        collection = await self.client.get_collection(self.collection)
+        return {"connected": True, "vector_count": int(collection.points_count or 0)}
+
     async def add_document(self, document_id: str, filename: str, size: int, chunks: list[dict],
                            vectors: list[list[float]]) -> None:
         await self.ensure_collection(len(vectors[0]))

@@ -1,9 +1,9 @@
 import {ChangeEvent, DragEvent, useEffect, useMemo, useState} from 'react'
 import {
-    ArrowClockwise, ArrowCounterClockwise, CheckCircle, DownloadSimple, Eye, FileText, FloppyDisk,
-    SlidersHorizontal, Trash, UploadSimple,
+    ArrowClockwise, ArrowCounterClockwise, CheckCircle, Cpu, Database, DownloadSimple, Eye, FileText,
+    FloppyDisk, Graph, ShareNetwork, SlidersHorizontal, Stack, Trash, UploadSimple,
 } from '@phosphor-icons/react'
-import {api, type DocumentItem, type TripleExtractionConfig, type TripleItem} from './api'
+import {api, type DocumentItem, type OllamaModel, type SystemOverview, type TripleExtractionConfig, type TripleItem} from './api'
 
 const ACCEPT = '.txt,.rtf,.csv,.tsv,.log,.md,.markdown,.py,.js,.jsx,.ts,.tsx,.json,.yaml,.yml,.toml,.ini,.conf,.cfg,.sql,.sh,.css,.html,.xml,.env'
 const DEFAULT_TRIPLE_PROMPT = `從內容抽取明確、可驗證的知識三元組。只輸出 JSON：{"triples":[{"subject":"實體","predicate":"關係","object":"實體或值"}]}。不可加入內容沒有陳述的知識；沒有三元組時輸出空陣列。`
@@ -12,6 +12,7 @@ const DEFAULT_TRIPLE_CONFIG: TripleExtractionConfig = {
     chunk_size: 900,
     chunk_overlap: 120,
     batch_chunks: 4,
+    chat_model: '',
 }
 
 function loadTripleConfig(): TripleExtractionConfig {
@@ -33,7 +34,11 @@ function StatusBadge({ready, children}: {ready: boolean; children: string}) {
     return <span className={`workflow-badge ${ready ? 'ready' : ''}`}>{ready && <CheckCircle size={14} weight="fill"/>}{children}</span>
 }
 
-export function UploadPanel({documents, refresh}: {documents: DocumentItem[]; refresh: () => Promise<void>}) {
+export function UploadPanel({documents, overview, refresh}: {
+    documents: DocumentItem[];
+    overview: SystemOverview | null;
+    refresh: () => Promise<void>;
+}) {
     const [dragging, setDragging] = useState(false)
     const [busy, setBusy] = useState(false)
     const [message, setMessage] = useState('')
@@ -70,6 +75,16 @@ export function UploadPanel({documents, refresh}: {documents: DocumentItem[]; re
         <div className="section-heading"><div className="section-icon"><UploadSimple size={19}/></div><div>
             <h2 id="upload-title">上載文件</h2><p>先把文件安全地存到 Raspberry Pi；處理工作會在下一步由你啟動。</p>
         </div></div>
+        <div className="connection-card"><div className="connection-heading"><div><Database size={19}/><strong>Graph DB Connection</strong></div>
+            <StatusBadge ready={Boolean(overview?.arangodb_connected)}>{overview?.arangodb_connected ? '已連線' : '未連線'}</StatusBadge></div>
+            <div className="connection-details"><div><span>ArangoDB</span><strong>{overview?.arangodb_database || '正在讀取…'}</strong><small>{overview?.arangodb_url || '—'}</small></div>
+                <div><Graph size={18}/><span>節點</span><strong>{overview?.graph_nodes.toLocaleString('zh-Hant') ?? '—'}</strong></div>
+                <div><ShareNetwork size={18}/><span>關係</span><strong>{overview?.graph_relationships.toLocaleString('zh-Hant') ?? '—'}</strong></div></div></div>
+        <div className="connection-card vector-connection"><div className="connection-heading"><div><Stack size={19}/><strong>Vector DB Connection</strong></div>
+            <StatusBadge ready={Boolean(overview?.qdrant_connected)}>{overview?.qdrant_connected ? '已連線' : '未連線'}</StatusBadge></div>
+            <div className="connection-details"><div><span>Qdrant Collection</span><strong>{overview?.qdrant_collection || '正在讀取…'}</strong><small>{overview?.qdrant_url || '—'}</small></div>
+                <div><Stack size={18}/><span>向量</span><strong>{overview?.vector_count.toLocaleString('zh-Hant') ?? '—'}</strong></div>
+                <div><Cpu size={18}/><span>Embedding</span><strong title={overview?.embedding_model}>{overview?.embedding_model || '—'}</strong></div></div></div>
         <label className={`workflow-dropzone ${dragging ? 'dragging' : ''} ${busy ? 'busy' : ''}`}
                onDragOver={event => {event.preventDefault(); setDragging(true)}} onDragLeave={() => setDragging(false)} onDrop={drop}>
             <UploadSimple size={34}/><strong>{busy ? '正在上載…' : '拖放文件到這裡，或按一下選擇檔案'}</strong>
@@ -91,17 +106,29 @@ export function UploadPanel({documents, refresh}: {documents: DocumentItem[]; re
     </section>
 }
 
-export function ProcessPanel({documents, refresh}: {documents: DocumentItem[]; refresh: () => Promise<void>}) {
+export function ProcessPanel({documents, overview, models, refresh}: {
+    documents: DocumentItem[];
+    overview: SystemOverview | null;
+    models: OllamaModel[];
+    refresh: () => Promise<void>;
+}) {
     const [mode, setMode] = useState<'triples' | 'embeddings'>('triples')
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [busy, setBusy] = useState(false)
     const [message, setMessage] = useState('')
     const [tripleConfig, setTripleConfig] = useState<TripleExtractionConfig>(loadTripleConfig)
     const eligible = useMemo(() => documents.filter(item => mode === 'triples' ? !item.triples_ready : !item.embeddings_ready), [documents, mode])
+    const chatModels = useMemo(() => models.filter(model => model.name !== overview?.embedding_model && !model.name.toLocaleLowerCase().includes('embed')), [models, overview?.embedding_model])
+
+    useEffect(() => {
+        if (!chatModels.length || chatModels.some(model => model.name === tripleConfig.chat_model)) return
+        const preferred = chatModels.find(model => model.name === overview?.chat_model)?.name || chatModels[0].name
+        setTripleConfig(previous => ({...previous, chat_model: preferred}))
+    }, [chatModels, overview?.chat_model, tripleConfig.chat_model])
 
     async function process() {
         if (!selected.size) return
-        if (mode === 'triples' && (tripleConfig.system_prompt.trim().length < 20 ||
+        if (mode === 'triples' && (!tripleConfig.chat_model || tripleConfig.system_prompt.trim().length < 20 ||
             tripleConfig.chunk_size < 200 || tripleConfig.chunk_size > 4000 ||
             tripleConfig.chunk_overlap < 0 || tripleConfig.chunk_overlap > Math.min(1000, tripleConfig.chunk_size / 2) ||
             tripleConfig.batch_chunks < 1 || tripleConfig.batch_chunks > 16)) {
@@ -120,6 +147,16 @@ export function ProcessPanel({documents, refresh}: {documents: DocumentItem[]; r
 
     return <section className="workflow-section"><div className="section-heading"><div className="section-icon"><ArrowClockwise size={19}/></div><div>
         <h2>處理文件</h2><p>把昂貴的模型工作拆開執行，方便控制 Raspberry Pi 的記憶體及處理時間。</p></div></div>
+        <div className="runtime-overview"><div className="runtime-card selectable"><span className="runtime-icon"><Cpu size={18}/></span><div><label htmlFor="triple-model">三元組模型</label>
+            <select id="triple-model" value={tripleConfig.chat_model} disabled={busy || !chatModels.length}
+                onChange={event => setTripleConfig(previous => ({...previous, chat_model: event.target.value}))}>
+                {!chatModels.length && <option value="">正在讀取 Ollama 模型…</option>}
+                {chatModels.map(model => <option value={model.name} key={model.name}>{model.name} · {(model.size / 1024 / 1024 / 1024).toFixed(1)} GB</option>)}</select>
+            <span>Ollama · 已安裝模型</span></div></div>
+            <div className="runtime-card"><span className="runtime-icon"><Database size={18}/></span><div><small>已預選 Embedding 模型</small>
+                <strong>{overview?.embedding_model || '正在讀取…'}</strong><span>Ollama · 寫入 Qdrant</span></div></div>
+            <div className="runtime-card"><span className="runtime-icon"><FileText size={18}/></span><div><small>Documents Ready</small>
+                <strong>{overview?.documents_ready ?? '—'} 個文件</strong><span>等待完成處理流程</span></div></div></div>
         <div className="subtabs" role="tablist"><button role="tab" aria-selected={mode === 'triples'} onClick={() => {setMode('triples'); setSelected(new Set())}}>三元組抽取</button>
             <button role="tab" aria-selected={mode === 'embeddings'} onClick={() => {setMode('embeddings'); setSelected(new Set())}}>Embeddings</button></div>
         <div className="process-summary"><div><strong>{mode === 'triples' ? '使用 Ollama 抽取 Subject–Predicate–Object' : '建立向量並寫入 Qdrant'}</strong>
@@ -139,7 +176,8 @@ export function ProcessPanel({documents, refresh}: {documents: DocumentItem[]; r
                         value={tripleConfig.batch_chunks} onChange={event => setTripleConfig(previous => ({...previous, batch_chunks: Number(event.target.value)}))}/><small>較小值較省記憶體</small></label>
                 </div>
                 <div className="config-footer"><span>估計每 64KB 約 {Math.ceil(64000 / Math.max(1, tripleConfig.chunk_size - tripleConfig.chunk_overlap))} 個 chunks</span>
-                    <button className="quiet-button" disabled={busy} onClick={() => setTripleConfig(DEFAULT_TRIPLE_CONFIG)}><ArrowCounterClockwise size={15}/>重設預設值</button></div>
+                    <button className="quiet-button" disabled={busy} onClick={() => setTripleConfig({...DEFAULT_TRIPLE_CONFIG,
+                        chat_model: overview?.chat_model || chatModels[0]?.name || ''})}><ArrowCounterClockwise size={15}/>重設預設值</button></div>
             </div>
         </details>}
         {message && <p className="workflow-message" role="status">{message}</p>}

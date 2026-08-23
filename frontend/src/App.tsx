@@ -1,6 +1,6 @@
 import {FormEvent, useCallback, useEffect, useState} from 'react'
 import {ArrowSquareOut, FileText} from '@phosphor-icons/react'
-import {api, type Citation, type DocumentItem, type Health, type KnowledgeGraph, type QueryResult} from './api'
+import {api, type Citation, type DocumentItem, type Health, type KnowledgeGraph, type OllamaModel, type QueryResult, type SystemOverview} from './api'
 import {KnowledgeGraphPanel} from './KnowledgeGraphPanel'
 import {ProcessPanel, TriplesPanel, UploadPanel} from './WorkflowPanels'
 
@@ -156,17 +156,22 @@ export function App() {
     const [documents, setDocuments] = useState<DocumentItem[]>([])
     const [totalChunks, setTotalChunks] = useState(0)
     const [health, setHealth] = useState<Health | null>(null)
+    const [overview, setOverview] = useState<SystemOverview | null>(null)
+    const [models, setModels] = useState<OllamaModel[]>([])
     const [graph, setGraph] = useState<KnowledgeGraph | null>(null)
     const [graphLoading, setGraphLoading] = useState(false)
     const [graphError, setGraphError] = useState('')
     const refresh = useCallback(async () => {
-        const data = await api.documents();
+        const [data, systemOverview] = await Promise.all([api.documents(), api.overview()]);
         setDocuments(data.documents);
         setTotalChunks(data.total_chunks)
+        setOverview(systemOverview)
     }, [])
     useEffect(() => {
         refresh().catch(() => undefined);
-        api.health().then(setHealth).catch(() => undefined)
+        Promise.all([api.health(), api.models()]).then(([serviceHealth, installedModels]) => {
+            setHealth(serviceHealth); setModels(installedModels)
+        }).catch(() => undefined)
     }, [refresh])
     useEffect(() => {
         if (tab !== 'graph') return
@@ -183,8 +188,8 @@ export function App() {
     return <main className="graph-page">
         <header><h1>Raspberry Pi 5 Local RAG</h1><p>{subtitles[tab]}</p></header>
         <section className="panel"><Tabs tab={tab} disabled={queryLoading} onChange={setTab}/>
-            {tab === 'upload' ? <UploadPanel documents={documents} refresh={refresh}/> :
-                tab === 'process' ? <ProcessPanel documents={documents} refresh={refresh}/> :
+            {tab === 'upload' ? <UploadPanel documents={documents} overview={overview} refresh={refresh}/> :
+                tab === 'process' ? <ProcessPanel documents={documents} overview={overview} models={models} refresh={refresh}/> :
                 tab === 'triples' ? <TriplesPanel refreshDocuments={refresh}/> :
                 tab === 'graph' ? <KnowledgeGraphPanel graph={graph} loading={graphLoading} error={graphError}/> :
                 <ChatPanel documents={documents} totalChunks={totalChunks} onLoadingChange={setQueryLoading}/>}<Status health={health}/></section>

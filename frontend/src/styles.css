@@ -155,6 +155,56 @@ header p {
     font-size: .84rem;
 }
 
+.connection-card {
+    margin-top: 22px;
+    padding: 14px;
+    border: 1px solid #dcdecf;
+    border-radius: 11px;
+    background: #fafbef;
+}
+
+.connection-card + .connection-card { margin-top: 10px; }
+
+.connection-heading, .connection-heading > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.connection-heading > div { justify-content: flex-start; }
+.connection-details { display: grid; grid-template-columns: minmax(260px, 1fr) 150px 150px; gap: 10px; margin-top: 12px; }
+.connection-details > div { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 8px; padding: 11px 12px; border: 1px solid #e0e2d3; border-radius: 9px; background: #fff; }
+.connection-details > div:first-child { grid-template-columns: 1fr; }
+.connection-details span, .connection-details small { color: #777b69; font-size: .69rem; }
+.connection-details strong { font-size: .82rem; }
+.connection-details > div:not(:first-child) strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.runtime-overview {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 22px;
+}
+
+.runtime-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid #dcdecf;
+    border-radius: 10px;
+    background: #fafbef;
+}
+
+.runtime-icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 9px; place-items: center; color: #596100; background: #eff5a5; }
+.runtime-card > div { display: grid; min-width: 0; gap: 2px; }
+.runtime-card small, .runtime-card span { color: #777b69; font-size: .67rem; }
+.runtime-card strong { overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-card label { color: #777b69; font-size: .67rem; }
+.runtime-card select { width: 100%; min-width: 0; padding: 5px 22px 5px 7px; border: 1px solid #d2d5c4; border-radius: 7px; color: #20230f; background: #fff; font-size: .75rem; font-weight: 700; }
+
 .workflow-dropzone {
     position: relative;
     display: flex;
@@ -1095,6 +1145,10 @@ textarea:disabled, select:disabled {
         min-height: 165px;
         padding: 18px;
         text-align: center;
+    }
+
+    .connection-details, .runtime-overview {
+        grid-template-columns: 1fr;
     }
 
     .rag-mode-switch {
